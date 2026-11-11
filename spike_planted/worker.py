@@ -1,0 +1,280 @@
+"""Threads and glue: detection thread, asyncio runner for HA/effects, and the Controller
+the UI talks to. Qt signals carry everything back to the GUI thread."""
+from __future__ import annotations
+
+import asyncio
+import collections
+import concurrent.futures
+import logging
+import threading
+import time
+from pathlib import Path
+
+import cv2
+import numpy as np
+from PyQt6.QtCore import QObject, QThread, pyqtSignal
+from PyQt6.QtGui import QImage
+
+from . import launcher
+from .config import load_config, save_config, save_token
+from .effects import Effects
+from .ha_client import HAClient
+from .tracker import Kind, Reading, Tracker, TrackerConfig
+
+log = logging.getLogger("spike.worker")
+
+
+class AsyncRunner:
+    """A long-lived asyncio loop on its own thread (HA calls and effects)."""
+
+    def __init__(self):
+        self.loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(target=self.loop.run_forever, name="ha-loop", daemon=True)
+        self._thread.start()
+
+    def submit(self, coro) -> concurrent.futures.Future:
+        return asyncio.run_coroutine_threadsafe(coro, self.loop)
+
+    def stop(self) -> None:
+        self.loop.call_soon_threadsafe(self.loop.stop)
+        self._thread.join(timeout=2)
+
+
+def to_qimage(bgr: np.ndarray) -> QImage:
+    rgb = np.ascontiguousarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
+    h, w = rgb.shape[:2]
+    return QImage(rgb.data, w, h, 3 * w, QImage.Format.Format_RGB888).copy()
+
+
+class DetectionThread(QThread):
+    reading = pyqtSignal(float, QImage)        # score, slot preview
+    state = pyqtSignal(str, float)             # tracker state, plant time (0 if none)
+    event = pyqtSignal(str, str)               # kind, reason
+    moonlight = pyqtSignal(str, str)           # "ok" | "waiting" | "error", message
+
+    def __init__(self, root: Path, cfg: dict, force_picker: bool = False):
+        super().__init__()
+        self.root, self.cfg, self.force_picker = root, cfg, force_picker
+        self._stop = threading.Event()
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def _wait(self, seconds: float) -> None:
+        self._stop.wait(seconds)
+
+    def run(self) -> None:
+        # Imported here so the UI can start (and tests can run) without GStreamer.
+        from .capture import CaptureCancelled, CaptureError, PortalCapture, moonlight_running
+        from .vision import HUD_ROI, analyze, crop, game_box, load_template
+
+        template = load_template()
+        tracker = Tracker(TrackerConfig.from_dict(self.cfg["detection"]))
+        period = 1.0 / max(1, min(15, int(self.cfg["capture"]["analysis_fps"])))
+        save_debug = bool(self.cfg["debug"]["save_round_frames"])
+        history: collections.deque = collections.deque(maxlen=int(12 / period))
+        cap = None
+        box, box_t, last_frame = None, 0.0, 0.0
+
+        while not self._stop.is_set():
+            if cap is None:
+                if not moonlight_running():
+                    self.moonlight.emit("waiting", "Moonlight not running")
+                    self._wait(5)
+                    continue
+                cap = PortalCapture(self.root / ".state" / "portal_token")
+                try:
+                    if not cap.has_token() or self.force_picker:
+                        self.moonlight.emit("waiting", "Pick the Moonlight window in the dialog")
+                    cap.open(force_picker=self.force_picker)
+                    self.force_picker = False
+                    last_frame = time.monotonic()
+                    self.moonlight.emit("ok", "Streaming")
+                except CaptureCancelled:
+                    self.moonlight.emit("error", "Window not picked. Use Pick window again")
+                    cap = None
+                    return
+                except CaptureError as e:
+                    self.moonlight.emit("error", f"Capture failed: {e}")
+                    cap = None
+                    self._wait(5)
+                    continue
+
+            tick = time.monotonic()
+            frame = cap.read(0.5)
+            now = time.monotonic()
+            if frame is None:
+                if now - last_frame > 3:
+                    self._emit_events(tracker.reset(now))
+                    cap.close()
+                    cap = None
+                    self.moonlight.emit("waiting", "Moonlight: not streaming")
+                    self._wait(5)
+                continue
+            last_frame = now
+            if box is None or now - box_t > 5:
+                box, box_t = game_box(frame), now
+            x0, y0, x1, y1 = box
+            game = frame[y0:y1, x0:x1]
+            if game.size == 0:
+                box = None
+                continue
+            a = analyze(game, template)
+            events = tracker.update(Reading(now, a.score, a.digits, a.whiteout))
+            self.reading.emit(a.score, to_qimage(a.slot))
+            self.state.emit(tracker.state.value, tracker.plant_t or 0.0)
+            if save_debug:
+                history.append((time.time(), crop(game, HUD_ROI).copy()))
+            self._emit_events(events)
+            if save_debug and any(e.kind is not Kind.PLANTED for e in events):
+                self._save_history(history, events[-1].kind.value)
+            self._wait(max(0.0, period - (time.monotonic() - tick)))
+
+        if cap is not None:
+            cap.close()
+        self.moonlight.emit("waiting", "Stopped")
+
+    def _emit_events(self, events) -> None:
+        for e in events:
+            self.event.emit(e.kind.value, e.reason)
+
+    def _save_history(self, history, kind: str) -> None:
+        out = self.root / "debug" / f"{time.strftime('%Y%m%d-%H%M%S')}_{kind}" / "hud"
+        out.mkdir(parents=True, exist_ok=True)
+        for t, img in list(history):
+            cv2.imwrite(str(out / f"{t:.2f}.jpg"), img, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        log.info("Saved %d debug frames to %s", len(history), out.parent)
+
+
+class Controller(QObject):
+    """Owns config, the HA client, effects and the detection thread."""
+
+    reading = pyqtSignal(float, QImage)
+    state = pyqtSignal(str, float)
+    event = pyqtSignal(str, str)
+    moonlight = pyqtSignal(str, str)
+    ha_health = pyqtSignal(bool)
+    running_changed = pyqtSignal(bool)
+    log_line = pyqtSignal(str)
+    lights_loaded = pyqtSignal(list)          # [Light]
+    connection_checked = pyqtSignal(bool, str)
+
+    def __init__(self, root: Path):
+        super().__init__()
+        self.root = root
+        self.cfg = load_config(root)
+        self.runner = AsyncRunner()
+        self.ha: HAClient | None = None
+        self.effects: Effects | None = None
+        self.known_lights: list = []
+        self._thread: DetectionThread | None = None
+        self._rebuild_ha()
+
+    # ------------------------------------------------------------------ config
+    def save(self) -> None:
+        save_config(self.root, self.cfg)
+
+    def set_ha(self, url: str, token: str) -> None:
+        url, token = url.strip(), token.strip()
+        changed_token = token != self.cfg["home_assistant"]["token"]
+        self.cfg["home_assistant"]["url"] = url
+        self.cfg["home_assistant"]["token"] = token
+        self.save()
+        if changed_token:
+            save_token(self.root, token)
+        self._rebuild_ha()
+
+    def set_open_on_login(self, on: bool) -> None:
+        self.cfg["capture"]["open_on_login"] = on
+        self.save()
+        launcher.set_autostart(self.root, on)
+
+    def _rebuild_ha(self) -> None:
+        old = self.ha
+        ha_cfg = self.cfg["home_assistant"]
+        self.ha = HAClient(ha_cfg["url"], ha_cfg["token"], on_health=self.ha_health.emit)
+        self.effects = Effects(self.ha, lambda: self.cfg)
+        if old is not None:
+            self.runner.submit(old.aclose())
+
+    # ------------------------------------------------------------------ HA actions
+    def _done(self, fut, on_ok):
+        def cb(f):
+            try:
+                on_ok(f.result())
+            except Exception as e:  # noqa: BLE001 - report anything to the log pane
+                log.exception("Background task failed")
+                self.log_line.emit(f"Error: {e}")
+        fut.add_done_callback(cb)
+
+    def check_connection(self) -> None:
+        async def go():
+            ok, msg = await self.ha.check()
+            lights = await self.ha.list_lights() if ok else []
+            return ok, msg, lights
+
+        def done(res):
+            ok, msg, lights = res
+            if ok:
+                self.known_lights = lights
+                msg = f"{msg} · {len(lights)} lights"
+                self.lights_loaded.emit(lights)
+            self.connection_checked.emit(ok, msg)
+
+        self._done(self.runner.submit(go()), done)
+
+    def test_effect(self, name: str) -> None:
+        self.log_line.emit(f"Testing {name} effect…")
+        self._done(self.runner.submit(self.effects.test(name)),
+                   lambda _: self.log_line.emit(f"Test {name} finished, lights restored"))
+
+    # ------------------------------------------------------------------ detection
+    @property
+    def running(self) -> bool:
+        return self._thread is not None and self._thread.isRunning()
+
+    def start(self, force_picker: bool = False) -> None:
+        if self.running:
+            return
+        t = DetectionThread(self.root, self.cfg, force_picker=force_picker)
+        t.reading.connect(self.reading)
+        t.state.connect(self.state)
+        t.moonlight.connect(self.moonlight)
+        t.event.connect(self._on_event)
+        t.finished.connect(self._on_finished)
+        self._thread = t
+        t.start()
+        self.running_changed.emit(True)
+        self.log_line.emit("Detection started")
+
+    def stop(self) -> None:
+        if self._thread is not None:
+            self._thread.stop()
+            self._thread.wait(3000)
+        self.runner.submit(self.effects.handle(Kind.ABORTED))
+
+    def restart(self, force_picker: bool = False) -> None:
+        was = self.running or force_picker
+        self.stop()
+        if was:
+            self.start(force_picker=force_picker)
+
+    def _on_event(self, kind: str, reason: str) -> None:
+        self.event.emit(kind, reason)
+        self.log_line.emit(f"{kind.upper()}: {reason}")
+        self.runner.submit(self.effects.handle(Kind(kind)))
+
+    def _on_finished(self) -> None:
+        self._thread = None
+        self.running_changed.emit(False)
+        self.state.emit("idle", 0.0)
+        self.log_line.emit("Detection stopped")
+
+    def shutdown(self) -> None:
+        self.stop()
+        fut = self.runner.submit(self.ha.aclose())
+        try:
+            fut.result(timeout=2)
+        except Exception:  # noqa: BLE001
+            pass
+        self.runner.stop()
