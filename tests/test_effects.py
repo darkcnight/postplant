@@ -53,6 +53,10 @@ class StatefulHA:
         self.sent.append((self.clock.t, "off", tuple(entities)))
         return True
 
+    async def run_script(self, entity):
+        self.sent.append((self.clock.t, "script", (entity,)))
+        return True
+
 
 WARM = {"entity_id": "light.room", "state": "on",
         "attributes": {"color_mode": "color_temp", "color_temp_kelvin": 2700, "brightness": 120}}
@@ -89,8 +93,9 @@ def test_commands_are_paced_to_min_interval():
     times = command_times(ha)
     gaps = [b - a for a, b in zip(times, times[1:]) if b != a]   # restore sends per light at once
     assert min(gaps) >= 1.0 - 1e-9
-    planted = [x for x in ha.sent if x[1] == "on" and x[3] == (255, 42, 58)]
-    assert len(planted) <= 50                 # was ~100 with the old 0.3 s pulse
+    planted = [x for x in ha.sent if x[1] == "on" and x[3] == (255, 42, 58)
+               and x[2] == ("light.room",)]
+    assert len(planted) <= 40                 # per light; was ~100 with the old 0.3 s pulse
     assert all(x[5] is None or x[5] >= 0.9 for x in planted)   # every pulse step fades
 
 
@@ -101,8 +106,9 @@ def test_detonation_is_flash_then_glow_not_strobe():
         return ha
 
     ha = asyncio.run(go())
-    ons = [x for x in ha.sent if x[1] == "on"]
+    ons = [x for x in ha.sent if x[1] == "on" and x[2] == ("light.room",)]
     assert [o[3] for o in ons] == [(255, 255, 255), (255, 40, 0)]
+    assert ons[0][5] == 0                     # flash jumps, no fade from the pulse colour
     assert not [x for x in ha.sent if x[1] == "off"]
 
 
@@ -200,4 +206,36 @@ def test_per_effect_light_override_and_union_snapshot():
 
     ha = asyncio.run(go())
     assert all(x[2] == ("light.logo",) for x in ha.sent if x[1] == "on")
+    assert any(x[1] == "on" for x in ha.sent)
     assert {x[2][0] for x in ha.sent if x[1] == "restore"} == {"light.room", "light.logo"}
+
+
+def test_restore_modes_script_and_members():
+    async def go():
+        fx, ha, cfg, _ = make(lights=("light.group", "light.logo"))
+        ha.states["light.d1"] = WARM | {"entity_id": "light.d1"}
+        ha.states["light.d2"] = {"entity_id": "light.d2", "state": "on",
+                                 "attributes": {"color_mode": "color_temp",
+                                                "color_temp_kelvin": 2000, "brightness": 25}}
+        ha.states["light.group"] = {"entity_id": "light.group", "state": "on", "attributes": {}}
+        cfg["home_assistant"]["restore"] = {
+            "light.group": {"mode": "members", "members": ["light.d1", "light.d2"]},
+            "light.logo": {"mode": "script", "script": "script.logo_default"},
+        }
+        before = {e: copy.deepcopy(ha.states[e]) for e in ("light.d1", "light.d2")}
+        await fx.handle(Kind.PLANTED)
+        await asyncio.sleep(0)
+        # the effect hits the group entity; members change with it
+        for e in ("light.d1", "light.d2"):
+            ha.states[e] = {"entity_id": e, "state": "on",
+                            "attributes": {"color_mode": "rgb", "rgb_color": [255, 0, 0],
+                                           "brightness": 255}}
+        await fx.handle(Kind.WIPED)
+        await fx.wait()
+        return ha, before
+
+    ha, before = asyncio.run(go())
+    assert ha.states["light.d1"] == before["light.d1"]
+    assert ha.states["light.d2"] == before["light.d2"]       # different brightness kept
+    assert ("script.logo_default",) in [x[2] for x in ha.sent if x[1] == "script"]
+    assert not [x for x in ha.sent if x[1] == "restore" and x[2] == ("light.logo",)]

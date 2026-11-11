@@ -70,9 +70,21 @@ def test_migrates_v1_factory_effects_and_drops_legacy_keys(tmp_path, monkeypatch
     v1["effects"]["defused"]["hold_s"] = 9.0          # user customised this one
     (tmp_path / "config.yaml").write_text(yaml.safe_dump(v1))
     cfg = load_config(tmp_path)
-    assert cfg["config_version"] == 2 and "spike" not in cfg
+    assert cfg["config_version"] == 3 and "spike" not in cfg
     assert "spike_roi" not in cfg["detection"] and cfg["detection"]["detonation_cutoff_s"] == 45.0
     assert cfg["effects"]["planted"]["phases"] == DEFAULTS["effects"]["planted"]["phases"]
     assert "strobe_count" not in cfg["effects"]["detonated"]
     assert cfg["effects"]["wiped"]["lights"] == ["light.a"]       # light choice kept
     assert cfg["effects"]["defused"]["hold_s"] == 9.0             # customisation kept
+
+
+def test_v2_to_v3_moves_only_untouched_values(tmp_path, monkeypatch):
+    monkeypatch.delenv("HA_TOKEN", raising=False)
+    v2 = {"config_version": 2, "detection": {"end_gap_s": 2.5, "detonation_cutoff_s": 45.0},
+          "effects": {"detonated": {"flash_s": 0.8, "glow_s": 7.0}}}
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump(v2))
+    cfg = load_config(tmp_path)
+    assert cfg["detection"]["end_gap_s"] == DEFAULTS["detection"]["end_gap_s"]
+    assert cfg["effects"]["detonated"]["flash_s"] == 1.5
+    assert cfg["effects"]["detonated"]["glow_s"] == 7.0
+    assert cfg["detection"]["detonation_cutoff_s"] == 45.0

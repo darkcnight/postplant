@@ -8,13 +8,15 @@ from pathlib import Path
 import yaml
 
 DEFAULTS: dict = {
-    "config_version": 2,
+    "config_version": 3,
     "home_assistant": {
         "url": "http://homeassistant.local:8123",
         "lights": [],
         # Zigbee groups and Tuya devices drop commands sent faster than about 1/s.
         "min_command_interval_s": 1.0,
         "restore_transition_s": 1.0,
+        # entity -> {"mode": "state" | "members" | "script", "members": [...], "script": ...}
+        "restore": {},
     },
     "capture": {
         "analysis_fps": 5,
@@ -24,7 +26,8 @@ DEFAULTS: dict = {
     "detection": {
         "threshold": 0.60,
         "plant_confirm_s": 0.5,
-        "end_gap_s": 2.5,
+        "end_gap_s": 0.4,
+        "end_wait_max_s": 2.5,
         "detonation_cutoff_s": 43.0,
         "whiteout_window_s": [44.0, 46.5],
         "end_evidence_frames": 3,
@@ -52,7 +55,7 @@ DEFAULTS: dict = {
         },
         "detonated": {
             "flash_color": [255, 255, 255],
-            "flash_s": 0.8,
+            "flash_s": 1.5,
             "glow_color": [255, 40, 0],
             "glow_brightness": 180,
             "fade_s": 1.0,
@@ -92,8 +95,10 @@ _LEGACY = {
 def migrate(user: dict) -> dict:
     """Bring a saved config up to config_version 2. Customised effects are kept."""
     user = copy.deepcopy(user)
-    if user.get("config_version", 1) >= 2:
+    if user.get("config_version", 1) >= 3:
         return user
+    if user.get("config_version", 1) == 2:
+        return _migrate_v2_to_v3(user)
     for section, keys in _LEGACY.items():
         target = user if section is None else user.get(section, {})
         if isinstance(target, dict):
@@ -113,6 +118,19 @@ def migrate(user: dict) -> dict:
                     if "strobe_color" in saved:
                         saved["flash_color"] = saved.pop("strobe_color")
     user["config_version"] = 2
+    return _migrate_v2_to_v3(user)
+
+
+def _migrate_v2_to_v3(user: dict) -> dict:
+    """v3 decides round ends from the timer readout (no 2.5 s wait) and holds the
+    detonation flash longer; replace those two values only if still at v2 defaults."""
+    det = user.get("detection")
+    if isinstance(det, dict) and det.get("end_gap_s") == 2.5:
+        det.pop("end_gap_s")
+    fx = (user.get("effects") or {}).get("detonated")
+    if isinstance(fx, dict) and fx.get("flash_s") == 0.8:
+        fx.pop("flash_s")
+    user["config_version"] = 3
     return user
 
 

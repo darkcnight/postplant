@@ -167,6 +167,7 @@ class Controller(QObject):
         self.ha: HAClient | None = None
         self.effects: Effects | None = None
         self.known_lights: list = []
+        self.known_scripts: list = []
         self.url_error = ""
         self._thread: DetectionThread | None = None
         self._rebuild_ha()
@@ -222,12 +223,14 @@ class Controller(QObject):
         async def go():
             ok, msg = await self.ha.check()
             lights = await self.ha.list_lights() if ok else []
-            return ok, msg, lights
+            scripts = await self.ha.list_scripts() if ok else []
+            return ok, msg, lights, scripts
 
         def done(res):
-            ok, msg, lights = res
+            ok, msg, lights, scripts = res
             if ok:
                 self.known_lights = lights
+                self.known_scripts = scripts
                 msg = f"{msg} · {len(lights)} lights"
                 self.lights_loaded.emit(lights)
             self.connection_checked.emit(ok, msg)

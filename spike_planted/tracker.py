@@ -35,7 +35,8 @@ class Event:
 class TrackerConfig:
     threshold: float = 0.60
     plant_confirm_s: float = 0.5
-    end_gap_s: float = 2.5
+    end_gap_s: float = 0.4           # icon must be gone at least this long
+    end_wait_max_s: float = 2.5      # ...and we decide by here if the timer is ambiguous
     detonation_cutoff_s: float = 43.0
     whiteout_window_s: tuple[float, float] = (44.0, 46.5)
     end_evidence_frames: int = 3     # frames showing a timer (>=3 digits) before we call it over
@@ -109,13 +110,20 @@ class Tracker:
             self._dip = []
             return []
         self._dip.append(r)
-        if r.t - self._dip[0].t < self.cfg.end_gap_s:
+        gap = r.t - self._dip[0].t
+        if gap < self.cfg.end_gap_s:
             return []
-        # Icon gone long enough. Only call the round over once the slot shows a timer
-        # again (post-round countdown or defuse readout); an empty slot means the HUD
-        # is covered (menu, map) and the spike may still be live.
-        evidence = sum(1 for x in self._dip if x.digits >= 3)
-        if evidence >= self.cfg.end_evidence_frames:
+        # Only call the round over once the slot shows a timer again: the defuse readout
+        # (SS.hh, 4 digits) or the post-round countdown (M:SS, 3 digits). An empty slot
+        # means the HUD is covered (menu, ability effect) and the spike may still be live.
+        # Deciding as soon as the timer is clearly readable keeps the lights in sync.
+        readouts = sum(1 for x in self._dip if x.digits >= 4)
+        countdown = sum(1 for x in self._dip if x.digits == 3)
+        clear_defuse = readouts >= self.cfg.defuse_min_frames
+        clear_countdown = countdown >= self.cfg.end_evidence_frames and countdown > 2 * readouts
+        waited = (gap >= self.cfg.end_wait_max_s
+                  and readouts + countdown >= self.cfg.end_evidence_frames)
+        if clear_defuse or clear_countdown or waited:
             return self._decide()
         if since >= self.cfg.hidden_timeout_s:
             return self._finish(Kind.ABORTED, r.t,

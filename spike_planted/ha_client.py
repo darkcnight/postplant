@@ -12,6 +12,7 @@ import httpx
 log = logging.getLogger("spike.ha")
 
 ENTITY_RE = re.compile(r"^light\.[a-z0-9_]+$")
+SCRIPT_RE = re.compile(r"^script\.[a-z0-9_]+$")
 
 # HA color_mode -> state attribute that holds the colour in that mode
 COLOR_ATTR = {
@@ -176,6 +177,31 @@ class HAClient:
         ]
         return sorted(lights, key=lambda l: l.name.lower())
 
+    async def list_scripts(self) -> list[Light]:
+        """Scripts as (entity_id, friendly name) for the restore picker."""
+        states = await self._get("/states") or []
+        scripts = [
+            Light(s["entity_id"], (s.get("attributes") or {}).get("friendly_name") or s["entity_id"],
+                  s.get("state", "unknown"))
+            for s in states
+            if isinstance(s, dict) and SCRIPT_RE.match(s.get("entity_id", ""))
+        ]
+        return sorted(scripts, key=lambda l: l.name.lower())
+
+    async def run_script(self, entity: str) -> bool:
+        if not SCRIPT_RE.match(entity or ""):
+            log.warning("Ignoring invalid script id: %r", entity)
+            return False
+        try:
+            r = await self._client.post("/services/script/turn_on", json={"entity_id": entity})
+            r.raise_for_status()
+            self._health(True)
+            return True
+        except httpx.HTTPError as e:
+            log.warning("HA script %s failed: %s", entity, e)
+            self._health(False)
+            return False
+
     async def snapshot(self, entities) -> dict[str, dict]:
         snap = {}
         for entity in valid_lights(entities):
@@ -203,7 +229,7 @@ class HAClient:
             payload["rgb_color"] = [int(c) for c in rgb]
         if brightness is not None:
             payload["brightness"] = max(0, min(255, int(brightness)))
-        if transition:
+        if transition is not None:      # 0 = jump now (overrides a light's default fade)
             payload["transition"] = round(float(transition), 2)
         return await self._service("turn_on", payload)
 

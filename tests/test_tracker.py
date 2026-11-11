@@ -99,7 +99,10 @@ def test_whiteout_outside_window_is_ignored():
 
 def test_no_retrigger_during_cooldown_then_next_round_works():
     tr = Tracker()
-    events, t = plant_round(tr, 0, 30, after_digits=3)
+    ev1, t = feed(tr, 0, 3, 0.0, 3)
+    ev2, t = feed(tr, t, 30, 0.9)
+    ev3, t = feed(tr, t, 2, 0.0, 3)            # round over, decided within ~0.6 s
+    events = ev1 + ev2 + ev3
     assert kinds(events) == [Kind.PLANTED, Kind.WIPED]
     flicker, t = feed(tr, t, 1, 0.9)           # icon flickers back during cooldown
     assert flicker == []
@@ -148,3 +151,28 @@ def test_config_from_dict_ignores_unknown_keys():
     cfg = TrackerConfig.from_dict({"threshold": 0.7, "whiteout_window_s": [40, 50],
                                    "spike_roi": {"x": 1}})
     assert cfg.threshold == 0.7 and cfg.whiteout_window_s == (40, 50)
+
+
+def test_outcome_is_decided_quickly_once_timer_is_readable():
+    tr = Tracker()
+    _, t = feed(tr, 0, 45, 0.9)
+    events, _ = feed(tr, t, 3, 0.0, 3)
+    assert kinds(events) == [Kind.DETONATED]
+    decided_at = None
+    tr2 = Tracker()
+    _, t = feed(tr2, 0, 45, 0.9)
+    for i in range(15):
+        ev = tr2.update(Reading(t + i * DT, 0.0, 3))
+        if ev:
+            decided_at = i * DT
+            break
+    assert decided_at is not None and decided_at <= 0.65
+
+
+def test_single_stray_readout_does_not_turn_detonation_into_defuse():
+    tr = Tracker()
+    _, t = feed(tr, 0, 45, 0.9)
+    events = []
+    for i, d in enumerate([4, 3, 3, 3, 3, 3]):
+        events += tr.update(Reading(t + i * DT, 0.0, d))
+    assert kinds(events) == [Kind.DETONATED]

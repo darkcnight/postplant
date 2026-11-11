@@ -75,7 +75,7 @@ class Effects:
         await self._cancel()
         target = self._snapshot or {**self._last_target, **self._unrestored}
         self._snapshot = None
-        if not target:
+        if not target and not self._restore_plan()[1]:
             self._log("Nothing to restore yet (no round has changed the lights)")
             return False
         return await self._restore(target)
@@ -108,8 +108,28 @@ class Effects:
                     lights.append(entity)
         return lights
 
+    def _restore_plan(self) -> tuple[list[str], list[str]]:
+        """(entities whose state we save and put back, scripts to run after a round).
+
+        Per-light rule in home_assistant.restore: {"mode": "state"} (default),
+        {"mode": "members", "members": [...]} for groups whose own state is only an
+        average, or {"mode": "script", "script": "script.x"} for looks a light state
+        can't describe (e.g. a device-side scene)."""
+        rules = self._cfg()["home_assistant"].get("restore") or {}
+        states, scripts = [], []
+        for light in self._all_lights():
+            rule = rules.get(light) or {}
+            mode = rule.get("mode", "state")
+            if mode == "script" and rule.get("script"):
+                if rule["script"] not in scripts:
+                    scripts.append(rule["script"])
+                continue
+            targets = (rule.get("members") or [light]) if mode == "members" else [light]
+            states += [t for t in targets if t not in states]
+        return states, scripts
+
     async def _take_snapshot(self) -> dict:
-        snap = await self.ha.snapshot(self._all_lights())
+        snap = await self.ha.snapshot(self._restore_plan()[0])
         # A light we failed to restore last round is still showing our colours; keep the
         # state we were trying to put it back to instead of saving the stuck colour.
         for entity, target in self._unrestored.items():
@@ -125,7 +145,9 @@ class Effects:
 
     async def _on(self, lights, **kw) -> None:
         await self._pace()
-        await self.ha.turn_on(lights, **kw)
+        # One call per light, in parallel: HA answers a call only when every light in it
+        # is done, so a slow cloud light (Tuya) would otherwise hold up the Zigbee ones.
+        await asyncio.gather(*(self.ha.turn_on([light], **kw) for light in lights))
 
     async def _cancel(self) -> None:
         if self._task and not self._task.done():
@@ -158,6 +180,12 @@ class Effects:
 
     async def _restore_inner(self, target: dict) -> bool:
         self._last_target = dict(target)
+        scripts = self._restore_plan()[1]
+        for script in scripts:
+            await self._pace()
+            await self.ha.run_script(script)
+        if not target:
+            return True
         transition = float(self._cfg()["home_assistant"].get("restore_transition_s", 1.0))
         pending = dict(target)
         for attempt in range(1, RESTORE_ATTEMPTS + 1):
@@ -197,7 +225,7 @@ class Effects:
     async def _defused(self) -> None:
         c = self._effect("defused")
         lights = self._lights("defused")
-        await self._on(lights, rgb=c["color"], brightness=c["brightness"])
+        await self._on(lights, rgb=c["color"], brightness=c["brightness"], transition=0)
         await self._sleep(c["flash_s"])
         await self._on(lights, rgb=c["color"], brightness=max(1, c["brightness"] // 2),
                        transition=self._min_gap)
@@ -206,7 +234,7 @@ class Effects:
     async def _detonated(self) -> None:
         c = self._effect("detonated")
         lights = self._lights("detonated")
-        await self._on(lights, rgb=c["flash_color"], brightness=255)
+        await self._on(lights, rgb=c["flash_color"], brightness=255, transition=0)
         await self._sleep(c["flash_s"])
         await self._on(lights, rgb=c["glow_color"], brightness=c["glow_brightness"],
                        transition=c["fade_s"])
