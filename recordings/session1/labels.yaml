@@ -1,0 +1,13 @@
+# Ground truth for tests/test_replay.py, checked against the round-end banners and the
+# frozen defuse readout in recordings/session1/full. Times are frame-file epoch seconds.
+until: 1794404700.0
+plants:
+  - {t: 1794402211.7, outcome: detonated}  # LOST · SPIKE DETONATED
+  - {t: 1794402318.1, outcome: wiped}      # LOST · TEAM ELIMINATED
+  - {t: 1794402416.4, outcome: wiped}      # LOST · TEAM ELIMINATED
+  - {t: 1794402519.1, outcome: defused}    # WON · SPIKE DEFUSED (41.9 s, readout 03.09)
+  - {t: 1794402655.1, outcome: wiped}      # FLAWLESS · ATTACKERS
+  - {t: 1794402742.7, outcome: defused}    # LOST · SPIKE DEFUSED (readout 07.41)
+  - {t: 1794404291.4, outcome: wiped}      # WON · ENEMY TEAM ELIMINATED
+  - {t: 1794404516.7, outcome: defused}    # settings menu covered HUD mid-plant; readout 27.83
+  - {t: 1794404589.6, outcome: defused}    # CLUTCH, readout 01.07 (43.9 s, near detonation)

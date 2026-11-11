@@ -125,23 +125,26 @@ before measuring, so thresholds don't depend on the stream resolution.
 
 Input per frame: `Reading(t, icon_score, digits, whiteout)`. Output: a list of `Event`s.
 
-States: `IDLE`, `PLANTED`, `ENDING`, `COOLDOWN`.
+States: `IDLE`, `PLANTED`, `COOLDOWN`.
 
 - `IDLE → PLANTED`: score ≥ threshold for 0.5 s. Plant time = the first frame of the run.
   Emits **Planted**.
 - `PLANTED`:
   - A whiteout 44.0–46.5 s after the plant emits **Detonated** at once (fast path).
     Whiteouts at any other time are ignored.
-  - A dip below threshold shorter than 2.5 s is ignored. At 2.5 s the plant ends:
-    end time = the first frame of the dip → `ENDING`.
-- `ENDING` collects `digits` from frames starting at the end time, for up to 2.0 s
-  (these frames are already buffered from the dip, so a decision is usually immediate):
-  - ≥ 3 frames with digits ≥ 4 → **Defused** (`remaining = 45 − duration` logged).
-  - otherwise, once 2.0 s of frames have been seen: duration ≥ 43.0 s →
-    **Detonated**; else **Defenders wiped**.
+  - A dip below threshold shorter than 2.5 s is ignored.
+  - Once the dip has lasted 2.5 s, the round only counts as over when the slot shows a
+    timer again (≥ 3 dip frames with digits ≥ 3). An empty slot means the HUD is
+    covered, for example by the settings menu (seen at ~4529 s in session1), and the
+    spike may still be live: keep waiting. End time = the first frame of the dip.
+    Duration = end time − plant time.
+    - ≥ 3 dip frames with digits ≥ 4 → **Defused**, logging `remaining = 45 − duration`.
+    - else duration ≥ 43.0 s → **Detonated**; else **Defenders wiped**.
+  - Still no timer 60 s after the plant → **Aborted** ("HUD hidden"), and the lights
+    restore.
 - After any outcome → `COOLDOWN` until the score has stayed below threshold for 5 s,
   then `IDLE`.
-- `reset()` (capture lost) while `PLANTED`/`ENDING` emits **Aborted**: effects stop,
+- `reset()` (capture lost) while `PLANTED` emits **Aborted**: effects stop and the
   lights restore.
 - Every event carries a human-readable reason, e.g. "Defused: timer readout 4 digits,
   icon 41.8 s". The reasons feed the Live tab log.
