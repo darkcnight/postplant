@@ -1,0 +1,14 @@
+.env
+.state/
+.venv/
+__pycache__/
+*.pyc
+debug/
+debug_frames/
+recordings/*/hud/
+recordings/*/full/
+.superpowers/
+*.AppImage
+dist/
+build/
+calibration_frame.png

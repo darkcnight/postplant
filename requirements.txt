@@ -1,0 +1,7 @@
+mss
+opencv-python
+numpy
+httpx
+pyyaml
+pillow
+
