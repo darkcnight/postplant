@@ -57,3 +57,22 @@ def test_save_token_replaces_line_and_keeps_comments(tmp_path, monkeypatch):
     assert lines == ["# keep me", "HA_TOKEN=new", "OTHER=1"]
     assert stat.S_IMODE(os.stat(tmp_path / ".env").st_mode) == 0o600
     assert load_config(tmp_path)["home_assistant"]["token"] == "new"
+
+
+def test_migrates_v1_factory_effects_and_drops_legacy_keys(tmp_path, monkeypatch):
+    monkeypatch.delenv("HA_TOKEN", raising=False)
+    from spike_planted.config import _V1_EFFECTS
+    v1 = {"home_assistant": {"lights": ["light.a"], "restore_on_defuse": True},
+          "detection": {"detonation_cutoff_s": 45.0, "spike_roi": {"x_pct": 0.4}},
+          "spike": {"timer_seconds": 45},
+          "effects": {name: {**vals, "lights": ["light.a"] if name == "wiped" else []}
+                      for name, vals in _V1_EFFECTS.items()}}
+    v1["effects"]["defused"]["hold_s"] = 9.0          # user customised this one
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump(v1))
+    cfg = load_config(tmp_path)
+    assert cfg["config_version"] == 2 and "spike" not in cfg
+    assert "spike_roi" not in cfg["detection"] and cfg["detection"]["detonation_cutoff_s"] == 45.0
+    assert cfg["effects"]["planted"]["phases"] == DEFAULTS["effects"]["planted"]["phases"]
+    assert "strobe_count" not in cfg["effects"]["detonated"]
+    assert cfg["effects"]["wiped"]["lights"] == ["light.a"]       # light choice kept
+    assert cfg["effects"]["defused"]["hold_s"] == 9.0             # customisation kept

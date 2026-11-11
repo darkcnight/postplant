@@ -68,6 +68,23 @@ class SettingsTab(QWidget):
         test_row.addWidget(self.status, 1)
         v.addLayout(test_row)
 
+        rate_row = QHBoxLayout()
+        rate_row.addWidget(QLabel("Light command rate: at most one every"))
+        rate = QDoubleSpinBox()
+        rate.setRange(0.3, 3.0)
+        rate.setSingleStep(0.1)
+        rate.setSuffix(" s")
+        rate.setValue(ha.get("min_command_interval_s", 1.0))
+        rate.valueChanged.connect(lambda v: self._set("home_assistant", "min_command_interval_s", v))
+        rate_row.addWidget(rate)
+        rate_row.addStretch()
+        v.addLayout(rate_row)
+        rate_hint = QLabel("Zigbee groups and Tuya lights drop commands sent faster than "
+                           "about 1 per second.")
+        rate_hint.setWordWrap(True)
+        rate_hint.setStyleSheet(f"color: {theme.GREY}; font-size: 11px;")
+        v.addWidget(rate_hint)
+
         v.addWidget(QLabel("Lights to control"))
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search lights…")

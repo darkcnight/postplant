@@ -14,7 +14,7 @@ from . import theme
 
 TITLES = {"planted": "Planted", "defused": "Defused", "detonated": "Detonated",
           "wiped": "Defenders wiped"}
-SWATCH_KEY = {"planted": "color", "defused": "color", "detonated": "strobe_color",
+SWATCH_KEY = {"planted": "color", "defused": "color", "detonated": "flash_color",
               "wiped": "color"}
 
 # (key, label, kind, min, max, step)
@@ -23,8 +23,8 @@ FIELDS = {
         ("color", "Colour", "color"),
         ("brightness_low", "Pulse low brightness", "int", 0, 255, 5),
         ("brightness_high", "Pulse high brightness", "int", 0, 255, 5),
-        ("transition", "Pulse fade (s)", "float", 0.0, 1.0, 0.05),
-        ("phases", "Pulse speed over the 45s timer", "phases"),
+        ("phases", "Pulse speed over the 45s timer (each step fades; never faster than "
+                   "the light command rate in Settings)", "phases"),
     ],
     "defused": [
         ("color", "Colour", "color"),
@@ -33,11 +33,11 @@ FIELDS = {
         ("hold_s", "Hold before restore (s)", "float", 0.0, 10.0, 0.1),
     ],
     "detonated": [
-        ("strobe_color", "Strobe colour", "color"),
-        ("strobe_count", "Strobe flashes", "int", 0, 20, 1),
-        ("strobe_interval", "Strobe speed (s)", "float", 0.03, 1.0, 0.01),
+        ("flash_color", "Flash colour", "color"),
+        ("flash_s", "Flash (s)", "float", 0.2, 5.0, 0.1),
         ("glow_color", "Glow colour", "color"),
         ("glow_brightness", "Glow brightness", "int", 1, 255, 5),
+        ("fade_s", "Fade flash → glow (s)", "float", 0.0, 5.0, 0.1),
         ("glow_s", "Glow (s)", "float", 0.0, 15.0, 0.5),
     ],
     "wiped": [
@@ -194,6 +194,10 @@ class EffectsTab(QWidget):
         self.title.setStyleSheet("font-size: 15px; font-weight: 600;")
         head.addWidget(self.title)
         head.addStretch()
+        restore = QPushButton("Restore lights now")
+        restore.setToolTip("Put the lights back to how they were before the last plant")
+        restore.clicked.connect(self.c.restore_now)
+        head.addWidget(restore)
         reset = QPushButton("Reset")
         reset.clicked.connect(self.reset)
         test = QPushButton("▶  Test on lights")

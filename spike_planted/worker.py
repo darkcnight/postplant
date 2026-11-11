@@ -195,7 +195,7 @@ class Controller(QObject):
         ha_cfg = self.cfg["home_assistant"]
         try:
             self.ha = HAClient(ha_cfg["url"], ha_cfg["token"], on_health=self.ha_health.emit)
-            self.effects = Effects(self.ha, lambda: self.cfg)
+            self.effects = Effects(self.ha, lambda: self.cfg, on_log=self.log_line.emit)
             self.url_error = ""
         except ValueError as e:
             self.ha = self.effects = None
@@ -261,12 +261,26 @@ class Controller(QObject):
         self.running_changed.emit(True)
         self.log_line.emit("Detection started")
 
-    def stop(self) -> None:
+    def stop(self, wait_for_lights: bool = False) -> None:
         if self._thread is not None:
             self._thread.stop()
             self._thread.wait(3000)
         if self.effects is not None:
-            self.runner.submit(self.effects.handle(Kind.ABORTED))
+            fut = self.runner.submit(self.effects.stop_and_restore())
+            if wait_for_lights:
+                try:
+                    fut.result(timeout=12)
+                except Exception:  # noqa: BLE001 - timeout or HA down: give up on exit
+                    log.warning("Lights not confirmed restored before exit")
+
+    def restore_now(self) -> None:
+        if self.effects is None:
+            self.log_line.emit("Set up Home Assistant on the Settings tab first")
+            return
+        self.log_line.emit("Restoring lights…")
+        self._done(self.runner.submit(self.effects.restore_now()),
+                   lambda ok: self.log_line.emit("Lights restored" if ok else
+                                                 "Restore not confirmed, see log above"))
 
     def restart(self, force_picker: bool = False) -> None:
         was = self.running or force_picker
@@ -287,7 +301,7 @@ class Controller(QObject):
         self.log_line.emit("Detection stopped")
 
     def shutdown(self) -> None:
-        self.stop()
+        self.stop(wait_for_lights=True)
         if self.ha is not None:
             try:
                 self.runner.submit(self.ha.aclose()).result(timeout=2)

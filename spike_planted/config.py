@@ -8,9 +8,13 @@ from pathlib import Path
 import yaml
 
 DEFAULTS: dict = {
+    "config_version": 2,
     "home_assistant": {
         "url": "http://homeassistant.local:8123",
         "lights": [],
+        # Zigbee groups and Tuya devices drop commands sent faster than about 1/s.
+        "min_command_interval_s": 1.0,
+        "restore_transition_s": 1.0,
     },
     "capture": {
         "analysis_fps": 5,
@@ -34,25 +38,24 @@ DEFAULTS: dict = {
     "effects": {
         "planted": {
             "color": [255, 42, 58],
-            "brightness_low": 60,
+            "brightness_low": 40,
             "brightness_high": 255,
-            "transition": 0.15,
-            "phases": [[15.0, 1.2], [15.0, 0.7], [15.0, 0.3]],
+            "phases": [[15.0, 2.0], [15.0, 1.4], [15.0, 1.0]],
             "lights": [],
         },
         "defused": {
             "color": [46, 229, 157],
             "brightness": 255,
-            "flash_s": 0.4,
-            "hold_s": 1.2,
+            "flash_s": 1.0,
+            "hold_s": 1.5,
             "lights": [],
         },
         "detonated": {
-            "strobe_color": [255, 255, 255],
-            "strobe_count": 5,
-            "strobe_interval": 0.08,
+            "flash_color": [255, 255, 255],
+            "flash_s": 0.8,
             "glow_color": [255, 40, 0],
             "glow_brightness": 180,
+            "fade_s": 1.0,
             "glow_s": 3.0,
             "lights": [],
         },
@@ -67,6 +70,50 @@ DEFAULTS: dict = {
 }
 
 _PLACEHOLDER_TOKENS = {"your_long_lived_token_here"}
+
+# Effect defaults shipped before config_version 2 (strobe/fast pulse; too fast for Zigbee).
+_V1_EFFECTS = {
+    "planted": {"color": [255, 42, 58], "brightness_low": 60, "brightness_high": 255,
+                "transition": 0.15, "phases": [[15.0, 1.2], [15.0, 0.7], [15.0, 0.3]]},
+    "defused": {"color": [46, 229, 157], "brightness": 255, "flash_s": 0.4, "hold_s": 1.2},
+    "detonated": {"strobe_color": [255, 255, 255], "strobe_count": 5, "strobe_interval": 0.08,
+                  "glow_color": [255, 40, 0], "glow_brightness": 180, "glow_s": 3.0},
+    "wiped": {"color": [179, 0, 27], "brightness": 200, "hold_s": 2.0, "fade_s": 1.5},
+}
+# Keys left behind by the original (pre-rebuild) app.
+_LEGACY = {
+    None: ["spike"],
+    "home_assistant": ["restore_on_defuse"],
+    "detection": ["method", "spike_roi", "poll_interval", "spike_color",
+                  "defuse_confirm_frames", "debug"],
+}
+
+
+def migrate(user: dict) -> dict:
+    """Bring a saved config up to config_version 2. Customised effects are kept."""
+    user = copy.deepcopy(user)
+    if user.get("config_version", 1) >= 2:
+        return user
+    for section, keys in _LEGACY.items():
+        target = user if section is None else user.get(section, {})
+        if isinstance(target, dict):
+            for key in keys:
+                target.pop(key, None)
+    effects = user.get("effects")
+    if isinstance(effects, dict):
+        for name, old in _V1_EFFECTS.items():
+            saved = effects.get(name)
+            if isinstance(saved, dict):
+                unchanged = {k: v for k, v in saved.items() if k != "lights"} == old
+                if unchanged:   # still factory settings: take the new defaults, keep lights
+                    effects[name] = {"lights": saved.get("lights", [])}
+                else:           # customised: keep values, drop keys the new effects ignore
+                    for k in ("transition", "strobe_count", "strobe_interval"):
+                        saved.pop(k, None)
+                    if "strobe_color" in saved:
+                        saved["flash_color"] = saved.pop("strobe_color")
+    user["config_version"] = 2
+    return user
 
 
 def deep_merge(base: dict, over: dict | None) -> dict:
@@ -95,7 +142,7 @@ def read_env(path: Path) -> dict[str, str]:
 def load_config(root: Path) -> dict:
     path = root / "config.yaml"
     user = yaml.safe_load(path.read_text()) if path.exists() else {}
-    cfg = deep_merge(DEFAULTS, user if isinstance(user, dict) else {})
+    cfg = deep_merge(DEFAULTS, migrate(user) if isinstance(user, dict) else {})
 
     ha = cfg["home_assistant"]
     if isinstance(ha.get("lights"), str):

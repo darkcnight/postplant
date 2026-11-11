@@ -42,9 +42,9 @@ def test_window_builds_and_reacts(app, tmp_path, monkeypatch):
 
         effects_tab = win.tabs.widget(1)
         effects_tab.list.setCurrentRow(2)
-        c.cfg["effects"]["detonated"]["strobe_count"] = 9
+        c.cfg["effects"]["detonated"]["glow_s"] = 9.0
         effects_tab.reset()
-        assert c.cfg["effects"]["detonated"]["strobe_count"] == 5
+        assert c.cfg["effects"]["detonated"]["glow_s"] == 3.0
         assert (tmp_path / "config.yaml").exists()
 
         c.test_effect("planted")   # no HA token: logged, nothing raised

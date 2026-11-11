@@ -49,6 +49,38 @@ def validate_url(url: str) -> str:
     return str(parsed).rstrip("/")
 
 
+def _close(a, b, tol) -> bool:
+    if a is None or b is None:
+        return a is None and b is None
+    if isinstance(a, (list, tuple)):
+        return len(a) == len(b) and all(abs(float(x) - float(y)) <= tol for x, y in zip(a, b))
+    return abs(float(a) - float(b)) <= tol
+
+
+_COLOR_TOL = {"hs_color": 4.0, "xy_color": 0.015, "rgb_color": 12, "rgbw_color": 12,
+              "rgbww_color": 12, "color_temp_kelvin": 80}
+
+
+def state_matches(target: dict, current: dict | None) -> bool:
+    """Does `current` look like the light was put back to `target`? Tolerant of rounding."""
+    if not current or target.get("state") != current.get("state"):
+        return False
+    if target.get("state") != "on":
+        return True
+    t, c = target.get("attributes") or {}, current.get("attributes") or {}
+    if t.get("brightness") is not None and not _close(t["brightness"], c.get("brightness"), 8):
+        return False
+    key = COLOR_ATTR.get(t.get("color_mode"))
+    if key and t.get(key) is not None:
+        if key == "hs_color" and t[key] and c.get(key):
+            dh = abs(float(t[key][0]) - float(c[key][0])) % 360
+            if min(dh, 360 - dh) > _COLOR_TOL[key] or abs(float(t[key][1]) - float(c[key][1])) > 4:
+                return False
+        elif not _close(t[key], c.get(key), _COLOR_TOL[key]):
+            return False
+    return True
+
+
 def restore_call(state: dict) -> tuple[str, dict] | None:
     """The light service call that puts a light back the way `state` describes."""
     entity = state.get("entity_id")
@@ -152,11 +184,14 @@ class HAClient:
                 snap[entity] = state
         return snap
 
-    async def restore(self, snap: dict[str, dict]) -> None:
+    async def restore(self, snap: dict[str, dict], *, transition: float | None = None) -> None:
         for state in snap.values():
             call = restore_call(state)
             if call:
-                await self._service(*call)
+                service, payload = call
+                if transition and "effect" not in payload:
+                    payload = {**payload, "transition": round(float(transition), 2)}
+                await self._service(service, payload)
 
     async def turn_on(self, entities, *, rgb=None, brightness: int | None = None,
                       transition: float | None = None) -> bool:

@@ -105,3 +105,30 @@ def test_failures_report_health_and_do_not_raise():
 
     run(go())
     assert health == [True, False]
+
+
+def test_state_matches_tolerates_rounding_but_not_effect_colours():
+    from spike_planted.ha_client import state_matches
+    warm = light("light.a", brightness=120, color_mode="color_temp", color_temp_kelvin=2700)
+    assert state_matches(warm, light("light.a", brightness=118, color_mode="color_temp",
+                                     color_temp_kelvin=2702))
+    assert not state_matches(warm, light("light.a", brightness=255, color_mode="xy",
+                                         xy_color=[0.68, 0.3]))
+    hs = light("light.b", brightness=80, color_mode="hs", hs_color=[359, 50])
+    assert state_matches(hs, light("light.b", brightness=80, color_mode="hs", hs_color=[1, 51]))
+    assert state_matches(light("light.c", "off"), light("light.c", "off", brightness=None))
+    assert not state_matches(light("light.c", "off"), None)
+
+
+def test_restore_sends_transition():
+    fake = FakeHA([light("light.a", brightness=10, color_mode="rgb", rgb_color=[1, 2, 3])])
+
+    async def go():
+        c = client(fake)
+        try:
+            await c.restore(await c.snapshot(["light.a"]), transition=1.0)
+        finally:
+            await c.aclose()
+
+    run(go())
+    assert fake.calls[-1][1]["transition"] == 1.0

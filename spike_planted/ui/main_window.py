@@ -5,7 +5,7 @@ import time
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QMainWindow, QPushButton, QTabWidget,
+from PyQt6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QPushButton, QTabWidget,
                              QVBoxLayout, QWidget)
 
 from . import theme
@@ -122,5 +122,7 @@ class MainWindow(QMainWindow):
         self.ml_label.setToolTip(self._ml[1])
 
     def closeEvent(self, event):
+        self.hide()                    # disappear at once; restoring lights can take a few s
+        QApplication.processEvents()
         self.c.shutdown()
         event.accept()
