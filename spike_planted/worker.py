@@ -251,9 +251,9 @@ class Controller(QObject):
         if self.running:
             return
         t = DetectionThread(self.root, self.cfg, force_picker=force_picker)
-        t.reading.connect(self.reading)
-        t.state.connect(self.state)
-        t.moonlight.connect(self.moonlight)
+        t.reading.connect(self.reading.emit)
+        t.state.connect(self.state.emit)
+        t.moonlight.connect(self.moonlight.emit)
         t.event.connect(self._on_event)
         t.finished.connect(self._on_finished)
         self._thread = t

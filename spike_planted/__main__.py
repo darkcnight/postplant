@@ -16,6 +16,10 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
                         datefmt="%H:%M:%S")
+    # PyQt6 aborts the process on an exception escaping a slot; log it instead so a
+    # stray bug can't kill the window mid-game.
+    sys.excepthook = lambda *exc: logging.getLogger("spike").error("Unhandled error",
+                                                                   exc_info=exc)
     app = QApplication(sys.argv)
     app.setApplicationName("Spike Planted")
     app.setDesktopFileName("spike-planted")

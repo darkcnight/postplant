@@ -50,3 +50,33 @@ def test_window_builds_and_reacts(app, tmp_path, monkeypatch):
         c.test_effect("planted")   # no HA token: logged, nothing raised
     finally:
         win.close()
+
+
+def test_controller_relays_signals_from_detection_thread(app, tmp_path, monkeypatch):
+    """Signals emitted on the worker thread must reach controller listeners (queued)."""
+    import time
+
+    from spike_planted import worker
+
+    def fake_run(self):
+        self.moonlight.emit("ok", "Streaming")
+        self.reading.emit(0.8, to_qimage(np.zeros((4, 4, 3), np.uint8)))
+        self.state.emit("planted", 1.0)
+        self.event.emit("planted", "fake")
+
+    monkeypatch.setattr(worker.DetectionThread, "run", fake_run)
+    monkeypatch.delenv("HA_TOKEN", raising=False)
+    c = Controller(tmp_path)
+    got = []
+    c.moonlight.connect(lambda k, m: got.append(("moonlight", k)))
+    c.reading.connect(lambda s, _i: got.append(("reading", s)))
+    c.state.connect(lambda s, _p: got.append(("state", s)))
+    c.event.connect(lambda k, _r: got.append(("event", k)))
+    c.start()
+    deadline = time.time() + 5
+    while time.time() < deadline and c.running or len(got) < 4 and time.time() < deadline:
+        app.processEvents()
+        time.sleep(0.01)
+    c.shutdown()
+    assert ("moonlight", "ok") in got and ("reading", 0.8) in got
+    assert ("state", "planted") in got and ("event", "planted") in got
