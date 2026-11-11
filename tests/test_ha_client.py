@@ -25,6 +25,15 @@ def test_restore_call_per_color_mode():
     assert restore_call(light("light.a", "unavailable")) is None
 
 
+def test_url_validation():
+    import pytest
+    from spike_planted.ha_client import validate_url
+    assert validate_url("http://192.168.1.50:8123/") == "http://192.168.1.50:8123"
+    for bad in ("ftp://ha", "http://user:pw@ha:8123", "homeassistant.local", ""):
+        with pytest.raises(ValueError):
+            validate_url(bad)
+
+
 def test_invalid_entity_ids_are_dropped():
     assert valid_lights(["light.ok_1", "light.../../x", "switch.fan", 3]) == ["light.ok_1"]
 

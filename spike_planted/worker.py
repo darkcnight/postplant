@@ -167,6 +167,7 @@ class Controller(QObject):
         self.ha: HAClient | None = None
         self.effects: Effects | None = None
         self.known_lights: list = []
+        self.url_error = ""
         self._thread: DetectionThread | None = None
         self._rebuild_ha()
 
@@ -192,8 +193,14 @@ class Controller(QObject):
     def _rebuild_ha(self) -> None:
         old = self.ha
         ha_cfg = self.cfg["home_assistant"]
-        self.ha = HAClient(ha_cfg["url"], ha_cfg["token"], on_health=self.ha_health.emit)
-        self.effects = Effects(self.ha, lambda: self.cfg)
+        try:
+            self.ha = HAClient(ha_cfg["url"], ha_cfg["token"], on_health=self.ha_health.emit)
+            self.effects = Effects(self.ha, lambda: self.cfg)
+            self.url_error = ""
+        except ValueError as e:
+            self.ha = self.effects = None
+            self.url_error = str(e)
+            self.log_line.emit(f"Home Assistant URL rejected: {e}")
         if old is not None:
             self.runner.submit(old.aclose())
 
@@ -208,6 +215,10 @@ class Controller(QObject):
         fut.add_done_callback(cb)
 
     def check_connection(self) -> None:
+        if self.ha is None:
+            self.connection_checked.emit(False, self.url_error or "Not configured")
+            return
+
         async def go():
             ok, msg = await self.ha.check()
             lights = await self.ha.list_lights() if ok else []
@@ -224,6 +235,9 @@ class Controller(QObject):
         self._done(self.runner.submit(go()), done)
 
     def test_effect(self, name: str) -> None:
+        if self.effects is None:
+            self.log_line.emit("Set up Home Assistant on the Settings tab first")
+            return
         self.log_line.emit(f"Testing {name} effect…")
         self._done(self.runner.submit(self.effects.test(name)),
                    lambda _: self.log_line.emit(f"Test {name} finished, lights restored"))
@@ -251,7 +265,8 @@ class Controller(QObject):
         if self._thread is not None:
             self._thread.stop()
             self._thread.wait(3000)
-        self.runner.submit(self.effects.handle(Kind.ABORTED))
+        if self.effects is not None:
+            self.runner.submit(self.effects.handle(Kind.ABORTED))
 
     def restart(self, force_picker: bool = False) -> None:
         was = self.running or force_picker
@@ -262,7 +277,8 @@ class Controller(QObject):
     def _on_event(self, kind: str, reason: str) -> None:
         self.event.emit(kind, reason)
         self.log_line.emit(f"{kind.upper()}: {reason}")
-        self.runner.submit(self.effects.handle(Kind(kind)))
+        if self.effects is not None:
+            self.runner.submit(self.effects.handle(Kind(kind)))
 
     def _on_finished(self) -> None:
         self._thread = None
@@ -272,9 +288,9 @@ class Controller(QObject):
 
     def shutdown(self) -> None:
         self.stop()
-        fut = self.runner.submit(self.ha.aclose())
-        try:
-            fut.result(timeout=2)
-        except Exception:  # noqa: BLE001
-            pass
+        if self.ha is not None:
+            try:
+                self.runner.submit(self.ha.aclose()).result(timeout=2)
+            except Exception:  # noqa: BLE001
+                pass
         self.runner.stop()

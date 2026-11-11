@@ -1,0 +1,52 @@
+"""Offscreen smoke test: the window builds, tabs work, signals update the strip."""
+import os
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+import numpy as np  # noqa: E402
+import pytest  # noqa: E402
+from PyQt6.QtWidgets import QApplication  # noqa: E402
+
+from spike_planted.ha_client import Light  # noqa: E402
+from spike_planted.ui.main_window import MainWindow  # noqa: E402
+from spike_planted.worker import Controller, to_qimage  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def app():
+    return QApplication.instance() or QApplication([])
+
+
+def test_window_builds_and_reacts(app, tmp_path, monkeypatch):
+    monkeypatch.delenv("HA_TOKEN", raising=False)
+    c = Controller(tmp_path)
+    win = MainWindow(c)
+    try:
+        win.show()
+        for i in range(win.tabs.count()):
+            win.tabs.setCurrentIndex(i)
+            app.processEvents()
+
+        c.reading.emit(0.91, to_qimage(np.zeros((136, 179, 3), np.uint8)))
+        c.state.emit("planted", 1.0)
+        app.processEvents()
+        win._refresh()
+        assert "PLANTED" in win.state_label.text()
+
+        c.event.emit("defused", "test")
+        win._refresh()
+        assert "DEFUSED" in win.state_label.text()
+
+        c.lights_loaded.emit([Light("light.room", "Room", "on")])
+        app.processEvents()
+
+        effects_tab = win.tabs.widget(1)
+        effects_tab.list.setCurrentRow(2)
+        c.cfg["effects"]["detonated"]["strobe_count"] = 9
+        effects_tab.reset()
+        assert c.cfg["effects"]["detonated"]["strobe_count"] == 5
+        assert (tmp_path / "config.yaml").exists()
+
+        c.test_effect("planted")   # no HA token: logged, nothing raised
+    finally:
+        win.close()

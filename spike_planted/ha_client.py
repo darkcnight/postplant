@@ -39,6 +39,16 @@ def valid_lights(entities) -> list[str]:
     return good
 
 
+def validate_url(url: str) -> str:
+    """Accept only plain http(s)://host[:port] URLs; the token is sent to this host."""
+    parsed = httpx.URL(url.strip())
+    if parsed.scheme not in ("http", "https") or not parsed.host:
+        raise ValueError("URL must look like http://homeassistant.local:8123")
+    if parsed.userinfo:
+        raise ValueError("URL must not contain a username or password")
+    return str(parsed).rstrip("/")
+
+
 def restore_call(state: dict) -> tuple[str, dict] | None:
     """The light service call that puts a light back the way `state` describes."""
     entity = state.get("entity_id")
@@ -65,12 +75,13 @@ def restore_call(state: dict) -> tuple[str, dict] | None:
 class HAClient:
     def __init__(self, url: str, token: str, *, transport: httpx.AsyncBaseTransport | None = None,
                  on_health: Callable[[bool], None] | None = None, timeout: float = 3.0):
-        self.base_url = url.rstrip("/")
+        self.base_url = validate_url(url)
         self._client = httpx.AsyncClient(
             base_url=self.base_url + "/api",
             headers={"Authorization": f"Bearer {token}"},
             timeout=timeout,
             transport=transport,
+            follow_redirects=False,   # never carry the token to another host
         )
         self._on_health = on_health
         self._healthy: bool | None = None
