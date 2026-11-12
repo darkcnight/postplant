@@ -13,3 +13,4 @@ dist/
 build/
 calibration_frame.png
 config.yaml
+*.egg-info/
