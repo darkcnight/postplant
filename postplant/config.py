@@ -1,4 +1,7 @@
-"""Settings: config.yaml (everything but the token) + .env (HA_TOKEN)."""
+"""Settings: config.yaml (everything but the token) + .env (HA_TOKEN).
+
+Both live in the user's config folder (`~/.config/postplant`, or $POSTPLANT_HOME), so the
+app can run from a read-only AppImage."""
 from __future__ import annotations
 
 import copy
@@ -79,6 +82,13 @@ DEFAULTS: dict = {
         },
     },
 }
+
+def default_home() -> Path:
+    if os.environ.get("POSTPLANT_HOME"):
+        return Path(os.environ["POSTPLANT_HOME"])
+    base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    return base / "postplant"
+
 
 _PLACEHOLDER_TOKENS = {"your_long_lived_token_here"}
 
@@ -195,6 +205,7 @@ def load_config(root: Path) -> dict:
 
 
 def save_config(root: Path, cfg: dict) -> None:
+    root.mkdir(parents=True, exist_ok=True)
     out = copy.deepcopy(cfg)
     out.get("home_assistant", {}).pop("token", None)
     tmp = root / "config.yaml.tmp"
@@ -203,6 +214,7 @@ def save_config(root: Path, cfg: dict) -> None:
 
 
 def save_token(root: Path, token: str) -> None:
+    root.mkdir(parents=True, exist_ok=True)
     path = root / ".env"
     lines = path.read_text().splitlines() if path.exists() else []
     out, replaced = [], False

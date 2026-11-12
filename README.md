@@ -18,26 +18,18 @@ Valorant and CS2 bomb events → Home Assistant lights, on Linux.
 
 Design and evidence: [docs/superpowers/specs/2026-11-11-spike-planted-rebuild-design.md](docs/superpowers/specs/2026-11-11-spike-planted-rebuild-design.md).
 
-## Requirements
+## Install
 
-KDE Plasma (Wayland) with `xdg-desktop-portal-kde` and PipeWire.
+1. Download `Postplant-<version>-x86_64.AppImage` from
+   [Releases](https://github.com/darkcnight/postplant/releases).
+2. Allow it to run once: in Dolphin, right-click → *Properties* → *Permissions* → tick
+   *Is executable*.
+3. Double-click it. Settings → *Add Postplant to the app menu* adds a menu entry if you
+   want one.
 
-- System packages: `python-pyqt6 python-gobject python-jeepney python-yaml
-  gst-plugin-pipewire gst-plugins-base`
-- pip (already in `~/.local` here): `pip install --user -r requirements.txt`
-  (httpx, opencv-python, numpy)
-
-## Run
-
-```bash
-python3 -m postplant
-```
-
-Or install the app-menu entry once and launch "Postplant" from the menu:
-
-```bash
-python3 -m postplant.launcher
-```
+Needs KDE Plasma (Wayland) with PipeWire and GStreamer's PipeWire plugin, which most
+Plasma desktops already have (Arch/CachyOS: `gst-plugin-pipewire`). CS2 mode needs nothing
+extra. Settings are stored in `~/.config/postplant`.
 
 First run:
 1. **Settings** → Home Assistant URL + long-lived token → *Save & test connection*.
@@ -82,9 +74,19 @@ home_assistant:
 
 ## Development
 
+Run from source (system packages: `python-pyqt6 python-jeepney python-yaml
+gst-plugin-pipewire`, plus `pip install --user -r requirements.txt`):
+
 ```bash
+python3 -m postplant
 python3 -m venv --system-site-packages .venv && .venv/bin/pip install pytest
 .venv/bin/python -m pytest
+```
+
+Build the AppImage (downloads a portable Python and the dependencies):
+
+```bash
+tools/build_appimage.sh
 ```
 
 - `tests/test_replay.py` replays `recordings/*/hud` against `labels.yaml`, when the

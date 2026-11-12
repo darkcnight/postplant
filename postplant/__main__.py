@@ -6,10 +6,11 @@ from pathlib import Path
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication
 
+from .config import default_home
 from .ui.main_window import MainWindow
 from .worker import Controller
 
-ROOT = Path(__file__).resolve().parents[1]
+ICON = Path(__file__).resolve().parent / "assets" / "icon.svg"
 
 
 def main() -> int:
@@ -23,10 +24,10 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Postplant")
     app.setDesktopFileName("postplant")
-    icon = QIcon(str(ROOT / "postplant" / "assets" / "icon.svg"))
+    icon = QIcon(str(ICON))
     app.setWindowIcon(icon)
 
-    controller = Controller(ROOT)
+    controller = Controller(default_home())
     win = MainWindow(controller, icon)
     win.show()
     if controller.cfg["home_assistant"]["token"]:

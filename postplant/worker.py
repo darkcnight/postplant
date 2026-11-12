@@ -82,7 +82,8 @@ class DetectionThread(QThread):
                     self.moonlight.emit("waiting", "Moonlight not running")
                     self._wait(5)
                     continue
-                cap = PortalCapture(self.root / ".state" / "portal_token")
+                cap = PortalCapture(self.root / ".state" / "portal_token",
+                                    max_fps=int(self.cfg["capture"]["analysis_fps"]))
                 try:
                     if not cap.has_token() or self.force_picker:
                         self.moonlight.emit("waiting", "Pick the Moonlight window in the dialog")
@@ -215,10 +216,10 @@ class Controller(QObject):
     lights_loaded = pyqtSignal(list)          # [Light]
     connection_checked = pyqtSignal(bool, str)
 
-    def __init__(self, root: Path):
+    def __init__(self, home: Path):
         super().__init__()
-        self.root = root
-        self.cfg = load_config(root)
+        self.root = home            # user config folder: config.yaml, .env, .state/, debug/
+        self.cfg = load_config(home)
         self.runner = AsyncRunner()
         self.ha: HAClient | None = None
         self.effects: Effects | None = None
@@ -265,7 +266,7 @@ class Controller(QObject):
     def set_open_on_login(self, on: bool) -> None:
         self.cfg["capture"]["open_on_login"] = on
         self.save()
-        launcher.set_autostart(self.root, on)
+        launcher.set_autostart(on)
 
     def _rebuild_ha(self) -> None:
         old = self.ha

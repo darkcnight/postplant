@@ -1,0 +1,2 @@
+[gui_scripts]
+postplant = postplant.__main__:main

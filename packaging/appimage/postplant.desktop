@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Postplant
+Comment=Valorant and CS2 bomb events to Home Assistant lights
+Exec=postplant
+Icon=postplant
+Terminal=false
+Categories=Game;

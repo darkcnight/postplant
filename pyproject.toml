@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "postplant"
+version = "0.2.0"
+description = "Valorant and CS2 bomb events to Home Assistant lights, on Linux"
+license = "GPL-3.0-only"
+requires-python = ">=3.11"
+dependencies = [
+    "PyQt6>=6.6",
+    "opencv-python-headless>=4.8",
+    "numpy>=1.26",
+    "httpx>=0.27",
+    "jeepney>=0.8",
+    "PyYAML>=6",
+]
+
+[project.gui-scripts]
+postplant = "postplant.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["postplant*"]
+
+[tool.setuptools.package-data]
+postplant = ["assets/*"]

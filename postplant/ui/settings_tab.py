@@ -239,7 +239,17 @@ class SettingsTab(QWidget):
         login.setChecked(cap["open_on_login"])
         login.toggled.connect(self.c.set_open_on_login)
         v.addWidget(login)
+        menu = QPushButton("Add Postplant to the app menu")
+        menu.clicked.connect(self._add_to_menu)
+        v.addWidget(menu, alignment=Qt.AlignmentFlag.AlignLeft)
         return box
+
+    def _add_to_menu(self):
+        from .. import launcher
+        launcher.install_launcher()
+        if self.c.cfg["capture"]["open_on_login"]:
+            launcher.set_autostart(True)       # point autostart at this copy too
+        self.c.log_line.emit("Added Postplant to the app menu")
 
     # ------------------------------------------------------------------ detection
     def _detection_box(self):
