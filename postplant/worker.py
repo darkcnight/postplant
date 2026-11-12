@@ -146,6 +146,62 @@ class DetectionThread(QThread):
         log.info("Saved %d debug frames to %s", len(history), out.parent)
 
 
+class CS2Thread(QThread):
+    """Listens for CS2 Game State Integration POSTs; same signals as DetectionThread."""
+
+    reading = pyqtSignal(float, QImage)
+    state = pyqtSignal(str, float)
+    event = pyqtSignal(str, str)
+    moonlight = pyqtSignal(str, str)           # source status: "ok" | "waiting" | "error"
+
+    STALE_S = 30.0                             # CS2 sends a heartbeat every 10 s
+
+    def __init__(self, cfg: dict):
+        super().__init__()
+        self.cfg = cfg
+        self._stop = threading.Event()
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def run(self) -> None:
+        from .cs2 import GSIServer, GSITracker
+
+        c = self.cfg["cs2"]
+        tracker = GSITracker()
+        last = {"t": 0.0}
+
+        def on_payload(payload, t):
+            if not last["t"]:
+                self.moonlight.emit("ok", "CS2 connected")
+            last["t"] = t
+            for e in tracker.update(payload, t):
+                self.event.emit(e.kind.value, e.reason)
+            self.state.emit(tracker.state, tracker.plant_t or 0.0)
+
+        try:
+            server = GSIServer(c["listen"], int(c["port"]), c["token"], on_payload)
+        except OSError as e:
+            self.moonlight.emit("error", f"Can't listen on {c['listen']}:{c['port']}: {e}")
+            return
+        where = f"{c['listen']}:{c['port']}"
+        self.moonlight.emit("waiting", f"Listening on {where}, waiting for CS2")
+        try:
+            while not self._stop.is_set():
+                server.handle_request()
+                if last["t"] and time.monotonic() - last["t"] > self.STALE_S:
+                    last["t"] = 0.0
+                    for e in tracker.reset(time.monotonic()):
+                        self.event.emit(e.kind.value, e.reason)
+                    self.state.emit(tracker.state, 0.0)
+                    self.moonlight.emit("waiting", f"CS2 went quiet. Listening on {where}")
+        finally:
+            server.server_close()
+        for e in tracker.reset(time.monotonic()):
+            self.event.emit(e.kind.value, e.reason)
+        self.moonlight.emit("waiting", "Stopped")
+
+
 class Controller(QObject):
     """Owns config, the HA client, effects and the detection thread."""
 
@@ -169,8 +225,28 @@ class Controller(QObject):
         self.known_lights: list = []
         self.known_scripts: list = []
         self.url_error = ""
-        self._thread: DetectionThread | None = None
+        self._thread: DetectionThread | CS2Thread | None = None
+        if not self.cfg["cs2"]["token"]:
+            from .cs2 import new_token
+            self.cfg["cs2"]["token"] = new_token()
+            self.save()
         self._rebuild_ha()
+
+    @property
+    def game(self) -> str:
+        return "cs2" if self.cfg.get("game") == "cs2" else "valorant"
+
+    @property
+    def source_name(self) -> str:
+        return "CS2" if self.game == "cs2" else "Moonlight"
+
+    def set_game(self, game: str) -> None:
+        if game == self.game:
+            return
+        self.cfg["game"] = game
+        self.save()
+        self.log_line.emit(f"Game: {'CS2' if game == 'cs2' else 'Valorant'}")
+        self.restart()
 
     # ------------------------------------------------------------------ config
     def save(self) -> None:
@@ -253,7 +329,10 @@ class Controller(QObject):
     def start(self, force_picker: bool = False) -> None:
         if self.running:
             return
-        t = DetectionThread(self.root, self.cfg, force_picker=force_picker)
+        if self.game == "cs2":
+            t = CS2Thread(self.cfg)
+        else:
+            t = DetectionThread(self.root, self.cfg, force_picker=force_picker)
         t.reading.connect(self.reading.emit)
         t.state.connect(self.state.emit)
         t.moonlight.connect(self.moonlight.emit)
@@ -262,7 +341,7 @@ class Controller(QObject):
         self._thread = t
         t.start()
         self.running_changed.emit(True)
-        self.log_line.emit("Detection started")
+        self.log_line.emit(f"Detection started ({self.source_name})")
 
     def stop(self, wait_for_lights: bool = False) -> None:
         if self._thread is not None:

@@ -70,7 +70,7 @@ def test_migrates_v1_factory_effects_and_drops_legacy_keys(tmp_path, monkeypatch
     v1["effects"]["defused"]["hold_s"] = 9.0          # user customised this one
     (tmp_path / "config.yaml").write_text(yaml.safe_dump(v1))
     cfg = load_config(tmp_path)
-    assert cfg["config_version"] == 3 and "spike" not in cfg
+    assert cfg["config_version"] == 4 and "spike" not in cfg
     assert "spike_roi" not in cfg["detection"] and cfg["detection"]["detonation_cutoff_s"] == 45.0
     assert cfg["effects"]["planted"]["phases"] == DEFAULTS["effects"]["planted"]["phases"]
     assert "strobe_count" not in cfg["effects"]["detonated"]
@@ -88,3 +88,15 @@ def test_v2_to_v3_moves_only_untouched_values(tmp_path, monkeypatch):
     assert cfg["effects"]["detonated"]["flash_s"] == 1.5
     assert cfg["effects"]["detonated"]["glow_s"] == 7.0
     assert cfg["detection"]["detonation_cutoff_s"] == 45.0
+
+
+def test_v3_to_v4_moves_untouched_pulse_to_beep_breakpoints(tmp_path, monkeypatch):
+    monkeypatch.delenv("HA_TOKEN", raising=False)
+    old = [[15.0, 2.0], [15.0, 1.4], [15.0, 1.0]]
+    for phases, expect in [(old, DEFAULTS["effects"]["planted"]["phases"]),
+                           ([[45.0, 1.0]], [[45.0, 1.0]])]:
+        v3 = {"config_version": 3, "effects": {"planted": {"phases": phases}}}
+        (tmp_path / "config.yaml").write_text(yaml.safe_dump(v3))
+        cfg = load_config(tmp_path)
+        assert cfg["config_version"] == 4 and cfg["effects"]["planted"]["phases"] == expect
+    assert sum(p[0] for p in DEFAULTS["effects"]["planted"]["phases"]) == 45.0

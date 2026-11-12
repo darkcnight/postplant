@@ -81,7 +81,7 @@ class LiveTab(QWidget):
 
         controller.reading.connect(self.on_reading)
         controller.log_line.connect(self.append)
-        controller.moonlight.connect(lambda kind, msg: self.append(f"Moonlight: {msg}"))
+        controller.moonlight.connect(lambda kind, msg: self.append(f"{self.c.source_name}: {msg}"))
         controller.running_changed.connect(self._on_running)
 
     def on_reading(self, score: float, img: QImage) -> None:
@@ -96,8 +96,12 @@ class LiveTab(QWidget):
             self.preview.setPixmap(pix)
 
     def _on_running(self, running: bool) -> None:
-        if not running:
-            self.preview.clear()
+        self.preview.clear()
+        if running and self.c.game == "cs2":
+            c = self.c.cfg["cs2"]
+            self.preview.setText(f"CS2 mode: no capture.\nListening for game state on "
+                                 f"{c['listen']}:{c['port']}")
+        elif not running:
             self.preview.setText("Not capturing")
 
     def append(self, line: str) -> None:

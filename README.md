@@ -2,13 +2,16 @@
 
 # Postplant
 
-Valorant spike events → Home Assistant lights, detected from the Moonlight stream on
-this Linux PC. Nothing runs on the gaming PC. The app only looks at pixels in the
-Moonlight window.
+Valorant and CS2 bomb events → Home Assistant lights, on Linux.
+
+- **Valorant**: detected from the Moonlight stream on this Linux PC. Nothing runs on
+  the gaming PC; the app only looks at pixels in the Moonlight window.
+- **CS2**: read from Valve's official Game State Integration (GSI) while CS2 runs on
+  this Linux PC. No screen capture, and exact bomb events.
 
 | Event | How it's detected | Default lights |
 |---|---|---|
-| Planted | Spike icon replaces the round timer | Red, pulsing faster over 45 s |
+| Planted | Spike icon replaces the round timer | Red, pulsing faster in step with the spike's beeps |
 | Defused | After the icon goes, the slot freezes on the time left (`03.09`) | Green flash, then restore |
 | Detonated | Icon lasted ≥ 43 s, or whiteout 44–46.5 s after plant | White flash, orange glow |
 | Defenders wiped | Round ended early, no defuse readout | Dark red, fade out |
@@ -45,6 +48,27 @@ First run:
 
 The window must stay open while you play. Closing it stops detection and restores the lights.
 
+### CS2
+
+1. **Settings → Game** → *CS2 (Game State Integration)*.
+2. *Install config into CS2 on this PC* writes `gamestate_integration_postplant.cfg`
+   (with a private token) into CS2's `cfg` folder in your Steam library. Restart CS2.
+3. **Start**. The status strip shows *CS2* green once the game sends its first update.
+
+CS2 reports `planted` / `defused` / `exploded` directly; a Terrorist win with the bomb
+down is *Defenders wiped*. The listener only accepts posts on 127.0.0.1 carrying the
+token from the cfg file.
+
+### Bomb timing
+
+The planted pulse follows each game's bomb sound, slowed to what Zigbee and Tuya lights can
+follow (about one command a second):
+
+| | Timer | Beeps | Default pulse steps |
+|---|---|---|---|
+| Valorant | 45 s | 1/s to 25 s, 2/s to 35 s, 4/s to 40 s, 8/s to 45 s ([Mobalytics](https://mobalytics.gg/blog/valorant-spike-guide/), [GameRiv](https://gameriv.com/how-long-does-it-take-to-defuse-the-spike-in-valorant/)) | 2.0 s to 25 s, 1.4 s to 35 s, 1.0 s to 45 s |
+| CS2 | 40 s | Speeds up, with a distinct sound for the last 10 s ([bo3.gg](https://bo3.gg/news/new-sound-for-10-second-warning-before-bomb-detonation-valve-has-released-a-new-update-for-cs2)) | Valorant's steps scaled to 40 s |
+
 Settings live in `config.yaml` (created on first save, not committed) and the token in
 `.env` (`HA_TOKEN=…`, mode 600). For lights whose look a saved state can't describe, set a
 restore rule in `config.yaml`:
@@ -71,6 +95,13 @@ python3 -m venv --system-site-packages .venv && .venv/bin/pip install pytest
 - Settings → *Save frames around each round end* writes the same format to
   `debug/`, so a misdetection can be replayed and turned into a test.
 - `python tools/build_template.py <hud dir> <t0> <t1>` rebuilds the icon template.
+
+## Future goals
+
+- CS2 on another PC (e.g. Windows) sending GSI to Postplant over the local network.
+- A Windows build of Postplant.
+- Settings screen for per-light restore rules (today: `config.yaml`).
+- Per-game pulse phases (CS2 currently reuses Valorant's, scaled to 40 s).
 
 ## License
 

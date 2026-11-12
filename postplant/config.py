@@ -8,7 +8,8 @@ from pathlib import Path
 import yaml
 
 DEFAULTS: dict = {
-    "config_version": 3,
+    "config_version": 4,
+    "game": "valorant",            # "valorant" (Moonlight capture) | "cs2" (Game State Integration)
     "home_assistant": {
         "url": "http://homeassistant.local:8123",
         "lights": [],
@@ -22,6 +23,11 @@ DEFAULTS: dict = {
         "analysis_fps": 5,
         "start_on_launch": True,
         "open_on_login": False,
+    },
+    "cs2": {
+        "listen": "127.0.0.1",     # CS2 on this PC; other PCs are a future goal
+        "port": 3450,
+        "token": "",               # generated on first use; must match the CS2 cfg file
     },
     "detection": {
         "threshold": 0.60,
@@ -43,7 +49,9 @@ DEFAULTS: dict = {
             "color": [255, 42, 58],
             "brightness_low": 40,
             "brightness_high": 255,
-            "phases": [[15.0, 2.0], [15.0, 1.4], [15.0, 1.0]],
+            # Valorant's spike beeps 1/s to 25 s, 2/s to 35 s, then 4-8/s to 45 s. Steps
+            # follow those breakpoints at the fastest rate Zigbee/Tuya lights keep up with.
+            "phases": [[25.0, 2.0], [10.0, 1.4], [10.0, 1.0]],
             "lights": [],
         },
         "defused": {
@@ -95,10 +103,12 @@ _LEGACY = {
 def migrate(user: dict) -> dict:
     """Bring a saved config up to config_version 2. Customised effects are kept."""
     user = copy.deepcopy(user)
-    if user.get("config_version", 1) >= 3:
+    if user.get("config_version", 1) >= 4:
         return user
+    if user.get("config_version", 1) == 3:
+        return _migrate_v3_to_v4(user)
     if user.get("config_version", 1) == 2:
-        return _migrate_v2_to_v3(user)
+        return _migrate_v3_to_v4(_migrate_v2_to_v3(user))
     for section, keys in _LEGACY.items():
         target = user if section is None else user.get(section, {})
         if isinstance(target, dict):
@@ -118,7 +128,7 @@ def migrate(user: dict) -> dict:
                     if "strobe_color" in saved:
                         saved["flash_color"] = saved.pop("strobe_color")
     user["config_version"] = 2
-    return _migrate_v2_to_v3(user)
+    return _migrate_v3_to_v4(_migrate_v2_to_v3(user))
 
 
 def _migrate_v2_to_v3(user: dict) -> dict:
@@ -131,6 +141,16 @@ def _migrate_v2_to_v3(user: dict) -> dict:
     if isinstance(fx, dict) and fx.get("flash_s") == 0.8:
         fx.pop("flash_s")
     user["config_version"] = 3
+    return user
+
+
+def _migrate_v3_to_v4(user: dict) -> dict:
+    """v4 lines the planted pulse up with the spike's beep breakpoints (25 / 35 s);
+    replace the old even 15 / 15 / 15 split only if it was never customised."""
+    fx = (user.get("effects") or {}).get("planted")
+    if isinstance(fx, dict) and fx.get("phases") == [[15.0, 2.0], [15.0, 1.4], [15.0, 1.0]]:
+        fx.pop("phases")
+    user["config_version"] = 4
     return user
 
 

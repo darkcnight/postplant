@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (QCheckBox, QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel,
+from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel,
                              QLineEdit, QListWidget, QListWidgetItem, QPushButton, QScrollArea,
                              QSizePolicy, QSlider, QSpinBox, QVBoxLayout, QWidget)
 
@@ -27,9 +27,14 @@ class SettingsTab(QWidget):
         row.setSpacing(12)
         row.addWidget(self._ha_box(), 1)
         col = QVBoxLayout()
+        col.addWidget(self._game_box())
+        self.cs2_box = self._cs2_box()
+        col.addWidget(self.cs2_box)
         col.addWidget(self._capture_box())
-        col.addWidget(self._detection_box())
+        self.det_box = self._detection_box()
+        col.addWidget(self.det_box)
         col.addStretch()
+        self._show_game(self.c.game)
         row.addLayout(col, 1)
 
         controller.connection_checked.connect(self._on_checked)
@@ -144,18 +149,88 @@ class SettingsTab(QWidget):
         self.c.save()
         self.c.lights_loaded.emit(self.c.known_lights)  # refresh effect editors
 
+    # ------------------------------------------------------------------ game
+    def _game_box(self):
+        box = QGroupBox("Game")
+        v = QVBoxLayout(box)
+        self.game = QComboBox()
+        self.game.addItem("Valorant (reads the Moonlight stream)", "valorant")
+        self.game.addItem("CS2 (Game State Integration)", "cs2")
+        self.game.setCurrentIndex(1 if self.c.game == "cs2" else 0)
+        self.game.currentIndexChanged.connect(self._game_changed)
+        v.addWidget(self.game)
+        return box
+
+    def _game_changed(self, _i):
+        game = self.game.currentData()
+        self._show_game(game)
+        self.c.set_game(game)
+
+    def _show_game(self, game: str):
+        cs2 = game == "cs2"
+        self.cs2_box.setVisible(cs2)
+        self.det_box.setVisible(not cs2)
+        self.pick.setVisible(not cs2)
+        self.token_status.setVisible(not cs2)
+
+    def _cs2_box(self):
+        from ..cs2 import CFG_NAME, find_cs2_cfg_dir
+
+        box = QGroupBox("CS2")
+        f = QFormLayout(box)
+        c = self.c.cfg["cs2"]
+        port = QSpinBox()
+        port.setRange(1024, 65535)
+        port.setValue(int(c["port"]))
+        port.valueChanged.connect(lambda v: self._set("cs2", "port", v, restart=True))
+        f.addRow("Port", port)
+
+        self.cs2_status = QLabel("")
+        self.cs2_status.setWordWrap(True)
+        self.cs2_status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        install = QPushButton("Install config into CS2 on this PC")
+        install.clicked.connect(self._install_cs2_cfg)
+        f.addRow(install)
+        f.addRow(self.cs2_status)
+        found = find_cs2_cfg_dir()
+        note = QLabel(f"Writes {CFG_NAME} to " + (str(found) if found else
+                      "CS2's cfg folder (not found yet; is CS2 installed in Steam?)")
+                      + ". Restart CS2 after installing.")
+        note.setWordWrap(True)
+        note.setStyleSheet(f"color: {theme.GREY}; font-size: 11px;")
+        f.addRow(note)
+        return box
+
+    def _cs2_cfg(self, host: str) -> str:
+        from ..cs2 import cfg_text
+        c = self.c.cfg["cs2"]
+        return cfg_text(f"http://{host}:{c['port']}/", c["token"])
+
+    def _install_cs2_cfg(self):
+        from ..cs2 import CFG_NAME, find_cs2_cfg_dir
+        folder = find_cs2_cfg_dir()
+        if folder is None:
+            self._cs2_msg(False, "CS2's cfg folder wasn't found in any Steam library")
+            return
+        (folder / CFG_NAME).write_text(self._cs2_cfg("127.0.0.1"))
+        self._cs2_msg(True, "Installed. Restart CS2, then press Start")
+
+    def _cs2_msg(self, ok: bool, msg: str):
+        self.cs2_status.setText(("✓ " if ok else "✗ ") + msg)
+        self.cs2_status.setStyleSheet(f"color: {theme.GREEN if ok else theme.RED};")
+
     # ------------------------------------------------------------------ capture
     def _capture_box(self):
-        box = QGroupBox("Capture")
+        box = QGroupBox("Start-up")
         v = QVBoxLayout(box)
         cap = self.c.cfg["capture"]
         token_ok = (self.c.root / ".state" / "portal_token").exists()
         self.token_status = QLabel("Moonlight window: " + ("✓ remembered" if token_ok
                                                              else "not picked yet"))
         v.addWidget(self.token_status)
-        pick = QPushButton("Pick window again…")
-        pick.clicked.connect(lambda: self.c.restart(force_picker=True))
-        v.addWidget(pick, alignment=Qt.AlignmentFlag.AlignLeft)
+        self.pick = QPushButton("Pick window again…")
+        self.pick.clicked.connect(lambda: self.c.restart(force_picker=True))
+        v.addWidget(self.pick, alignment=Qt.AlignmentFlag.AlignLeft)
         auto = QCheckBox("Start detecting when the app opens")
         auto.setChecked(cap["start_on_launch"])
         auto.toggled.connect(lambda on: self._set("capture", "start_on_launch", on))

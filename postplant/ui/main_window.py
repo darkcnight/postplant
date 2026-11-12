@@ -114,11 +114,12 @@ class MainWindow(QMainWindow):
         else:
             text, color = "WATCHING", theme.MUTED
         self.state_label.setText(f"{dot(color)} <span style='color:{color}'>{text}</span>")
-        self.score_label.setText(f"match {self._score:.2f}" if self.c.running else "")
+        valorant = self.c.game == "valorant"
+        self.score_label.setText(f"match {self._score:.2f}" if self.c.running and valorant else "")
         ha_color = {None: theme.GREY, True: theme.GREEN, False: theme.AMBER}[self._ha_ok]
         self.ha_label.setText(f"{dot(ha_color)} HA")
         ml_color = {"ok": theme.GREEN, "waiting": theme.GREY, "error": theme.RED}[self._ml[0]]
-        self.ml_label.setText(f"{dot(ml_color)} Moonlight")
+        self.ml_label.setText(f"{dot(ml_color)} {self.c.source_name}")
         self.ml_label.setToolTip(self._ml[1])
 
     def closeEvent(self, event):

@@ -23,7 +23,8 @@ FIELDS = {
         ("color", "Colour", "color"),
         ("brightness_low", "Pulse low brightness", "int", 0, 255, 5),
         ("brightness_high", "Pulse high brightness", "int", 0, 255, 5),
-        ("phases", "Pulse speed over the 45s timer (each step fades; never faster than "
+        ("phases", "Pulse speed over the bomb timer, stretched to fit 45s Valorant or 40s CS2 "
+                   "(each step fades; never faster than "
                    "the light command rate in Settings)", "phases"),
     ],
     "defused": [

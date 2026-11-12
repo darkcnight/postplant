@@ -17,6 +17,7 @@ from .tracker import Kind
 log = logging.getLogger("spike.effects")
 
 EFFECT_NAMES = ("planted", "defused", "detonated", "wiped")
+BOMB_TIMER_S = {"valorant": 45.0, "cs2": 40.0}
 VERIFY_DELAY_S = 1.5
 RESTORE_ATTEMPTS = 3
 
@@ -212,7 +213,10 @@ class Effects:
         hi, lo = c["brightness_high"], c["brightness_low"]
         await self._on(lights, rgb=rgb, brightness=hi)
         high = False
+        # Phases are written for Valorant's 45 s spike; stretch them to this game's timer.
+        scale = BOMB_TIMER_S.get(self._cfg().get("game"), 45.0) / BOMB_TIMER_S["valorant"]
         for length, interval in c["phases"]:
+            length = float(length) * scale
             step = max(float(interval), self._min_gap)
             for _ in range(max(1, round(length / step))):
                 # Fade over the whole step so slow lights breathe instead of flicker.
