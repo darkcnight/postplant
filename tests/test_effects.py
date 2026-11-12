@@ -44,8 +44,10 @@ class StatefulHA:
         self.sent.append((self.clock.t, "on", tuple(entities), tuple(rgb or ()), brightness,
                           transition))
         for e in entities:
+            old = (self.states.get(e) or {}).get("attributes") or {}
             self.states[e] = {"entity_id": e, "state": "on",
-                              "attributes": {"color_mode": "rgb", "rgb_color": list(rgb),
+                              "attributes": {"color_mode": "rgb",
+                                             "rgb_color": list(rgb) if rgb else old.get("rgb_color"),
                                              "brightness": brightness}}
         return True
 
@@ -93,10 +95,12 @@ def test_commands_are_paced_to_min_interval():
     times = command_times(ha)
     gaps = [b - a for a, b in zip(times, times[1:]) if b != a]   # restore sends per light at once
     assert min(gaps) >= 1.0 - 1e-9
-    planted = [x for x in ha.sent if x[1] == "on" and x[3] == (255, 42, 58)
+    planted = [x for x in ha.sent if x[1] == "on" and x[3] in ((255, 42, 58), ())
                and x[2] == ("light.room",)]
     assert len(planted) <= 40                 # per light; was ~100 with the old 0.3 s pulse
     assert all(x[5] is None or x[5] >= 0.9 for x in planted)   # every pulse step fades
+    steps = [x for x in planted if x[5] is not None]
+    assert steps and all(x[3] == () for x in steps)   # pulse steps send brightness only
 
 
 def test_detonation_is_flash_then_glow_not_strobe():

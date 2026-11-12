@@ -219,8 +219,10 @@ class Effects:
             length = float(length) * scale
             step = max(float(interval), self._min_gap)
             for _ in range(max(1, round(length / step))):
-                # Fade over the whole step so slow lights breathe instead of flicker.
-                await self._on(lights, rgb=rgb, brightness=hi if high else lo,
+                # Fade over the whole step so slow lights breathe instead of flicker. Brightness
+                # only: the colour was set above, and resending it doubles the Zigbee commands
+                # (measured: pulses confirmed about twice as fast without it).
+                await self._on(lights, brightness=hi if high else lo,
                                transition=step * 0.9)
                 await self._sleep(step)
                 high = not high

@@ -54,7 +54,9 @@ token from the cfg file.
 ### Bomb timing
 
 The planted pulse follows each game's bomb sound, slowed to what Zigbee and Tuya lights can
-follow (about one command a second):
+follow (about one command a second). Each pulse step only changes brightness; the colour
+is set once when the bomb is planted, which halves the commands and roughly halves the delay
+on Zigbee lights:
 
 | | Timer | Beeps | Default pulse steps |
 |---|---|---|---|
