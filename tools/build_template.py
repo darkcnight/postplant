@@ -1,4 +1,4 @@
-"""Build spike_planted/assets/spike_icon_mask.png from recorded HUD frames.
+"""Build postplant/assets/spike_icon_mask.png from recorded HUD frames.
 
 Averages the spike-red mask of the icon slot over frames where the spike is known to be
 planted, keeps pixels lit in most of them, and trims to the shape's bounding box.
@@ -12,7 +12,7 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from spike_planted.vision import (HUD_ROI, SLOT_REF, SLOT_ROI, TEMPLATE_PATH, crop,  # noqa: E402
+from postplant.vision import (HUD_ROI, SLOT_REF, SLOT_ROI, TEMPLATE_PATH, crop,  # noqa: E402
                                   spike_red_mask, sub_roi)
 
 

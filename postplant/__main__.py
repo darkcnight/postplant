@@ -1,4 +1,4 @@
-"""python -m spike_planted : launch the Spike Planted window."""
+"""python -m postplant : launch the Postplant window."""
 import logging
 import sys
 from pathlib import Path
@@ -21,9 +21,9 @@ def main() -> int:
     sys.excepthook = lambda *exc: logging.getLogger("spike").error("Unhandled error",
                                                                    exc_info=exc)
     app = QApplication(sys.argv)
-    app.setApplicationName("Spike Planted")
-    app.setDesktopFileName("spike-planted")
-    icon = QIcon(str(ROOT / "spike_planted" / "assets" / "icon.svg"))
+    app.setApplicationName("Postplant")
+    app.setDesktopFileName("postplant")
+    icon = QIcon(str(ROOT / "postplant" / "assets" / "icon.svg"))
     app.setWindowIcon(icon)
 
     controller = Controller(ROOT)

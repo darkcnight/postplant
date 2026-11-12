@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from spike_planted.replay import replay
-from spike_planted.tracker import Kind
+from postplant.replay import replay
+from postplant.tracker import Kind
 
 ROOT = Path(__file__).resolve().parents[1]
 LABELS = sorted(p for p in (ROOT / "recordings").glob("*/labels.yaml") if (p.parent / "hud").is_dir())

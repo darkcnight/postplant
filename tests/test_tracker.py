@@ -1,4 +1,4 @@
-from spike_planted.tracker import Kind, Reading, State, Tracker, TrackerConfig
+from postplant.tracker import Kind, Reading, State, Tracker, TrackerConfig
 
 FPS = 5
 DT = 1 / FPS

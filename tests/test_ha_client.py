@@ -1,7 +1,7 @@
 import asyncio
 
 from fakes import FakeHA, light
-from spike_planted.ha_client import HAClient, restore_call, valid_lights
+from postplant.ha_client import HAClient, restore_call, valid_lights
 
 
 def run(coro):
@@ -27,7 +27,7 @@ def test_restore_call_per_color_mode():
 
 def test_url_validation():
     import pytest
-    from spike_planted.ha_client import validate_url
+    from postplant.ha_client import validate_url
     assert validate_url("http://192.168.1.50:8123/") == "http://192.168.1.50:8123"
     for bad in ("ftp://ha", "http://user:pw@ha:8123", "homeassistant.local", ""):
         with pytest.raises(ValueError):
@@ -108,7 +108,7 @@ def test_failures_report_health_and_do_not_raise():
 
 
 def test_state_matches_tolerates_rounding_but_not_effect_colours():
-    from spike_planted.ha_client import state_matches
+    from postplant.ha_client import state_matches
     warm = light("light.a", brightness=120, color_mode="color_temp", color_temp_kelvin=2700)
     assert state_matches(warm, light("light.a", brightness=118, color_mode="color_temp",
                                      color_temp_kelvin=2702))

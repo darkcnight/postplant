@@ -1,10 +1,10 @@
 import asyncio
 import copy
 
-from spike_planted.config import DEFAULTS
-from spike_planted.effects import Effects
-from spike_planted.ha_client import restore_call
-from spike_planted.tracker import Kind
+from postplant.config import DEFAULTS
+from postplant.effects import Effects
+from postplant.ha_client import restore_call
+from postplant.tracker import Kind
 
 
 class FakeClock:

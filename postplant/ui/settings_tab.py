@@ -160,7 +160,7 @@ class SettingsTab(QWidget):
         auto.setChecked(cap["start_on_launch"])
         auto.toggled.connect(lambda on: self._set("capture", "start_on_launch", on))
         v.addWidget(auto)
-        login = QCheckBox("Open Spike Planted when I log in")
+        login = QCheckBox("Open Postplant when I log in")
         login.setChecked(cap["open_on_login"])
         login.toggled.connect(self.c.set_open_on_login)
         v.addWidget(login)

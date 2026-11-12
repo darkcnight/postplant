@@ -7,9 +7,9 @@ import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
-from spike_planted.ha_client import Light  # noqa: E402
-from spike_planted.ui.main_window import MainWindow  # noqa: E402
-from spike_planted.worker import Controller, to_qimage  # noqa: E402
+from postplant.ha_client import Light  # noqa: E402
+from postplant.ui.main_window import MainWindow  # noqa: E402
+from postplant.worker import Controller, to_qimage  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -56,7 +56,7 @@ def test_controller_relays_signals_from_detection_thread(app, tmp_path, monkeypa
     """Signals emitted on the worker thread must reach controller listeners (queued)."""
     import time
 
-    from spike_planted import worker
+    from postplant import worker
 
     def fake_run(self):
         self.moonlight.emit("ok", "Streaming")

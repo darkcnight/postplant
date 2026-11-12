@@ -12,3 +12,4 @@ recordings/*/full/
 dist/
 build/
 calibration_frame.png
+config.yaml

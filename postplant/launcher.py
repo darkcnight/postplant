@@ -5,7 +5,8 @@ import os
 import sys
 from pathlib import Path
 
-DESKTOP_NAME = "spike-planted.desktop"
+DESKTOP_NAME = "postplant.desktop"
+LEGACY_NAMES = ("spike-planted.desktop",)   # the app's name before Postplant
 
 
 def _data_home() -> Path:
@@ -28,13 +29,13 @@ def _exec_quote(arg: str) -> str:
 
 
 def desktop_entry(root: Path) -> str:
-    icon = root / "spike_planted" / "assets" / "icon.svg"
+    icon = root / "postplant" / "assets" / "icon.svg"
     return "\n".join([
         "[Desktop Entry]",
         "Type=Application",
-        "Name=Spike Planted",
+        "Name=Postplant",
         "Comment=Valorant spike events to Home Assistant lights",
-        f"Exec={_exec_quote(python_for(root))} -m spike_planted",
+        f"Exec={_exec_quote(python_for(root))} -m postplant",
         f"Path={root}",
         f"Icon={icon}",
         "Terminal=false",
@@ -43,8 +44,14 @@ def desktop_entry(root: Path) -> str:
     ])
 
 
+def _remove_legacy(folder: Path) -> None:
+    for name in LEGACY_NAMES:
+        (folder / name).unlink(missing_ok=True)
+
+
 def install_launcher(root: Path) -> Path:
     path = _data_home() / "applications" / DESKTOP_NAME
+    _remove_legacy(path.parent)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(desktop_entry(root))
     return path
@@ -52,6 +59,7 @@ def install_launcher(root: Path) -> Path:
 
 def set_autostart(root: Path, on: bool) -> Path:
     path = _config_home() / "autostart" / DESKTOP_NAME
+    _remove_legacy(path.parent)
     if on:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(desktop_entry(root))

@@ -3,7 +3,7 @@ import stat
 
 import yaml
 
-from spike_planted.config import DEFAULTS, deep_merge, load_config, save_config, save_token
+from postplant.config import DEFAULTS, deep_merge, load_config, save_config, save_token
 
 
 def test_deep_merge_keeps_defaults_and_overrides():
@@ -61,7 +61,7 @@ def test_save_token_replaces_line_and_keeps_comments(tmp_path, monkeypatch):
 
 def test_migrates_v1_factory_effects_and_drops_legacy_keys(tmp_path, monkeypatch):
     monkeypatch.delenv("HA_TOKEN", raising=False)
-    from spike_planted.config import _V1_EFFECTS
+    from postplant.config import _V1_EFFECTS
     v1 = {"home_assistant": {"lights": ["light.a"], "restore_on_defuse": True},
           "detection": {"detonation_cutoff_s": 45.0, "spike_roi": {"x_pct": 0.4}},
           "spike": {"timer_seconds": 45},

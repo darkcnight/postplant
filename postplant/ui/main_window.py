@@ -22,7 +22,7 @@ class MainWindow(QMainWindow):
     def __init__(self, controller, icon: QIcon | None = None):
         super().__init__()
         self.c = controller
-        self.setWindowTitle("Spike Planted")
+        self.setWindowTitle("Postplant")
         if icon:
             self.setWindowIcon(icon)
         self.resize(820, 560)

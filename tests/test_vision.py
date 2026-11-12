@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import pytest
 
-from spike_planted.vision import (HUD_ROI, SLOT_ROI, TIMER_ROI, analyze, crop, digit_count,
+from postplant.vision import (HUD_ROI, SLOT_ROI, TIMER_ROI, analyze, crop, digit_count,
                                   game_box, icon_score, is_whiteout, load_template, sub_roi)
 
 FIX = Path(__file__).parent / "fixtures"

@@ -1,6 +1,6 @@
 """Run vision + tracker over a recorded HUD folder (tools/record.py or debug saves).
 
-    python -m spike_planted.replay recordings/session1
+    python -m postplant.replay recordings/session1
 """
 from __future__ import annotations
 
